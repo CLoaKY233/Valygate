@@ -11,11 +11,15 @@ chrono.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 tokio.workspace = true
-tower-http = { version = "0.6.8", features = ["trace"] }
+tower-http.workspace = true
 anyhow.workspace = true
 dotenvy.workspace = true
 telemetry.workspace = true
 envy.workspace = true
+reqwest.workspace = true
+thiserror.workspace = true
+valygate-core.workspace=true
+
 
 [workspace]
 resolver = "3"
@@ -27,13 +31,16 @@ axum = "0.8.8"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.138"
 chrono = { version = "0.4.39", features = ["serde"] }
-tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
+tokio = { version = "1.49.0", features = ["rt-multi-thread", "macros", "signal"] }
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
 dotenvy = "0.15.7"
 envy = "0.4.2"
+reqwest = { version = "0.13.2", features = ["json", "stream"] }
 telemetry = { path = "crates/telemetry" }
-
+valygate-core = { path = "crates/core" }
+tower-http = { version = "0.6.8", features = ["trace"] }
+thiserror = "2.0.11"
 
 
 [profile.release]
