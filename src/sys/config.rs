@@ -41,15 +41,8 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
-    pub fn from_env() -> Self {
-        envy::from_env::<AppConfig>().unwrap_or_else(|_| AppConfig {
-            server_host: default_host(),
-            server_port: default_port(),
-            http_pool_idle_timeout_secs: default_pool_idle_timeout_secs(),
-            http_pool_max_idle_per_host: default_pool_max_idle_per_host(),
-            http_connect_timeout_secs: default_connect_timeout_secs(),
-            http_timeout_secs: default_timeout_secs(),
-        })
+    pub fn from_env() -> Result<Self, envy::Error> {
+        envy::from_env::<AppConfig>()
     }
 
     pub fn address(&self) -> String {

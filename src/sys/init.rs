@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, bail};
 use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
@@ -8,7 +8,14 @@ use tracing::info;
 use super::{config::AppConfig, state::AppState};
 
 pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
-    let config = AppConfig::from_env();
+    let config = AppConfig::from_env()?;
+
+    if config.http_connect_timeout_secs == 0 || config.http_timeout_secs == 0 {
+        bail!("HTTP timeout values must be > 0");
+    }
+    if config.http_timeout_secs < config.http_connect_timeout_secs {
+        bail!("http_timeout_secs must be >= http_connect_timeout_secs");
+    }
 
     info!(
         host = %config.server_host,
