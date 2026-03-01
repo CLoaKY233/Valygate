@@ -1,8 +1,8 @@
 use anyhow;
 use axum::{
+    Json,
     http::StatusCode,
     response::{IntoResponse, Response},
-    Json,
 };
 use serde_json::json;
 use thiserror::Error;
@@ -30,7 +30,10 @@ impl IntoResponse for AppError {
             AppError::ProviderTimeout => (StatusCode::GATEWAY_TIMEOUT, "Provider timeout".into()),
             AppError::Internal(err) => {
                 tracing::error!("Internal server error: {:?}", err);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".into())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".into(),
+                )
             }
         };
 
