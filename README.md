@@ -1,19 +1,20 @@
+
 # ValyGate
 
-ValyGate will be an all-in-one LLM gateway, proxy, prompt manager, and observability platform.
+**Production‑grade LLM Gateway, Proxy, and Observability Platform**  
+*Rust‑powered, high‑throughput proxy + Langfuse‑style observability in one.*
 
-## Overview
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/CLoaKY233/Valygate?utm_source=oss&utm_medium=github&utm_campaign=CLoaKY233%2FValygate&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 
-ValyGate aims to combine the capabilities of tools like Langfuse and Bifrost into a single, unified solution for:
+## What it does
 
-- **LLM Gateway & Proxy:** Centralized access and management for multiple LLM providers.
-- **Prompt Management:** Versioning, testing, and deployment of prompts.
-- **Observability:** Comprehensive tracking and analysis of LLM interactions.
+| Feature | Status | Description |
+|---------|--------|-------------|
+| **HTTP Proxy** | 🟢 Working | OpenAI‑compatible `/v1/chat/completions` → provider forwarding |
+| **Model Routing** | 🟡 Planned | `gpt‑4` → OpenAI, `sonnet` → Anthropic |
+| **Observability** | 🟢 Working | Request‑level tracing, Prometheus metrics (`latency_p95`, `errors_total`) |
+| **Rate Limiting** | 🟡 Planned | Per‑API‑key, per‑tenant quotas |
+| **Prompt Mgmt** | 🔴 Planned | Versioning, A/B testing, deployment |
 
-## Status
 
-We are currently in the early stages of development.
 
-## Getting Started
-
-*(Development instructions will be added as the project progresses)*
