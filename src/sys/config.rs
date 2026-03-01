@@ -6,6 +6,18 @@ fn default_host() -> String {
 fn default_port() -> u16 {
     3000
 }
+fn default_pool_idle_timeout_secs() -> u64 {
+    90
+}
+fn default_pool_max_idle_per_host() -> usize {
+    32
+}
+fn default_connect_timeout_secs() -> u64 {
+    10
+}
+fn default_timeout_secs() -> u64 {
+    300
+}
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct AppConfig {
@@ -14,6 +26,18 @@ pub struct AppConfig {
 
     #[serde(default = "default_port")]
     pub server_port: u16,
+
+    #[serde(default = "default_pool_idle_timeout_secs")]
+    pub http_pool_idle_timeout_secs: u64,
+
+    #[serde(default = "default_pool_max_idle_per_host")]
+    pub http_pool_max_idle_per_host: usize,
+
+    #[serde(default = "default_connect_timeout_secs")]
+    pub http_connect_timeout_secs: u64,
+
+    #[serde(default = "default_timeout_secs")]
+    pub http_timeout_secs: u64,
 }
 
 impl AppConfig {
@@ -21,6 +45,10 @@ impl AppConfig {
         envy::from_env::<AppConfig>().unwrap_or_else(|_| AppConfig {
             server_host: default_host(),
             server_port: default_port(),
+            http_pool_idle_timeout_secs: default_pool_idle_timeout_secs(),
+            http_pool_max_idle_per_host: default_pool_max_idle_per_host(),
+            http_connect_timeout_secs: default_connect_timeout_secs(),
+            http_timeout_secs: default_timeout_secs(),
         })
     }
 

@@ -22,10 +22,10 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
         .with_context(|| format!("Failed to bind TCP listener to {}", address))?;
 
     let http_client = Client::builder()
-        .pool_idle_timeout(Duration::from_secs(90))
-        .pool_max_idle_per_host(32)
-        .connect_timeout(Duration::from_secs(10))
-        .timeout(Duration::from_secs(300))
+        .pool_idle_timeout(Duration::from_secs(config.http_pool_idle_timeout_secs))
+        .pool_max_idle_per_host(config.http_pool_max_idle_per_host)
+        .connect_timeout(Duration::from_secs(config.http_connect_timeout_secs))
+        .timeout(Duration::from_secs(config.http_timeout_secs))
         .build()
         .context("Failed to build HTTP client")?;
 
