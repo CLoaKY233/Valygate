@@ -6,17 +6,14 @@ use tracing::info;
 use super::{config::AppConfig, state::AppState};
 
 pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
-    let env_loaded = dotenvy::dotenv().is_ok();
-    if env_loaded {
-        info!(".env file loaded");
-    }
-
     let config = AppConfig::from_env();
+    
     info!(
-        host = %config.host,
-        port = config.port,
+        host = %config.server_host,
+        port = config.server_port,
         "Server configuration loaded"
     );
+    
     let address = config.address();
     let listener = TcpListener::bind(&address)
         .await
@@ -24,9 +21,7 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
 
     info!("Listening on http://{}", address);
 
-    let state = Arc::new(AppState {
-        config: Arc::new(config),
-    });
+    let state = Arc::new(AppState { config });
 
     Ok((state, listener))
 }

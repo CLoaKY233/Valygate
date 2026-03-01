@@ -1,22 +1,26 @@
-use std::env;
+use serde::Deserialize;
 
-#[derive(Clone, Debug)]
+fn default_host() -> String { "0.0.0.0".to_string() }
+fn default_port() -> u16 { 3000 }
+
+#[derive(Clone, Debug, Deserialize)]
 pub struct AppConfig {
-    pub host: String,
-    pub port: u16,
+    #[serde(default = "default_host")]
+    pub server_host: String,
+    
+    #[serde(default = "default_port")]
+    pub server_port: u16,
 }
 
 impl AppConfig {
     pub fn from_env() -> Self {
-        let host = env::var("SERVER_HOST").unwrap_or_else(|_| "0.0.0.0".to_string());
-        let port = env::var("SERVER_PORT")
-            .unwrap_or_else(|_| "3000".to_string())
-            .parse::<u16>()
-            .unwrap_or(3000);
-        Self { host, port }
+        envy::from_env::<AppConfig>().unwrap_or_else(|_| AppConfig {
+            server_host: default_host(),
+            server_port: default_port(),
+        })
     }
 
     pub fn address(&self) -> String {
-        format!("{}:{}", self.host, self.port)
+        format!("{}:{}", self.server_host, self.server_port)
     }
 }

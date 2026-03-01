@@ -151,6 +151,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
+name = "envy"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f47e0157f2cb54f5ae1bd371b30a2ae4311e1c028f575cd4e81de7353215965"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -289,7 +298,7 @@ dependencies = [
  "core-foundation-sys",
  "iana-time-zone-haiku",
  "js-sys",
- "log 0.4.29",
+ "log",
  "wasm-bindgen",
  "windows-core",
 ]
@@ -330,14 +339,6 @@ name = "libc"
 version = "0.2.182"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6800badb6cb2082ffd7b6a67e6125bb39f18782f793520caee8cb8846be06112"
-
-[[package]]
-name = "log"
-version = "0.0.1"
-dependencies = [
- "tracing",
- "tracing-subscriber",
-]
 
 [[package]]
 name = "log"
@@ -593,6 +594,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bf256ce5efdfa370213c1dabab5935a12e49f2c58d15e9eac2870d3b4f27263"
 
 [[package]]
+name = "telemetry"
+version = "0.0.1"
+dependencies = [
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "thread_local"
 version = "1.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -676,7 +685,7 @@ version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "63e71662fa4b2a2c3a26f570f037eb95bb1f85397f3cd8076caed2f026a6d100"
 dependencies = [
- "log 0.4.29",
+ "log",
  "pin-project-lite",
  "tracing-attributes",
  "tracing-core",
@@ -709,7 +718,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee855f1f400bd0e5c02d150ae5de3840039a3f54b025156404e34c23c03f47c3"
 dependencies = [
- "log 0.4.29",
+ "log",
  "once_cell",
  "tracing-core",
 ]
@@ -765,9 +774,10 @@ dependencies = [
  "axum",
  "chrono",
  "dotenvy",
- "log 0.0.1",
+ "envy",
  "serde",
  "serde_json",
+ "telemetry",
  "tokio",
  "tower-http",
  "tracing",
