@@ -1,0 +1,37 @@
+[package]
+name = "valygate"
+version = "0.0.1"
+edition = "2024"
+
+
+[dependencies]
+axum.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tokio.workspace = true
+tower-http = { version = "0.6.8", features = ["trace"] }
+anyhow.workspace = true
+log.workspace = true
+dotenvy.workspace = true
+
+
+
+[workspace]
+resolver = "3"
+members = [".", "crates/*"]
+
+
+[workspace.dependencies]
+anyhow = "1.0.102"
+axum = "0.8.8"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.138"
+chrono = { version = "0.4.39", features = ["serde"] }
+tokio = { version = "1.49.0", features = ["rt-multi-thread"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json"] }
+log = { path = "crates/log" }
+dotenvy = "0.15.7"

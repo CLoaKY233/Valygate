@@ -1,0 +1,8 @@
+[package]
+name = "log"
+version = "0.0.1"
+edition = "2024"
+
+[dependencies]
+tracing.workspace = true
+tracing-subscriber.workspace = true
