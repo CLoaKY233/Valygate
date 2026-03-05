@@ -7,6 +7,12 @@ use tracing::info;
 
 use super::{config::AppConfig, state::AppState};
 
+/// # Errors
+/// Returns an error if:
+/// - Environment variable deserialization fails
+/// - HTTP timeout values are invalid
+/// - TCP listener fails to bind
+/// - HTTP client fails to build
 pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
     let config = AppConfig::from_env()?;
 
@@ -26,7 +32,9 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
     let address = config.address();
     let listener = TcpListener::bind(&address)
         .await
-        .with_context(|| format!("Failed to bind TCP listener to {}", address))?;
+        .with_context(|| format!("Failed to bind TCP listener to {address}"))?;
+
+    info!(address = %address, "TCP listener bound");
 
     let http_client = Client::builder()
         .pool_idle_timeout(Duration::from_secs(config.http_pool_idle_timeout_secs))

@@ -34,31 +34,25 @@ async fn main() -> Result<()> {
 
 async fn shutdown_signal() {
     let ctrl_c = async {
-        if let Err(e) = tokio::signal::ctrl_c().await {
-            tracing::error!("Failed to handle Ctrl+C: {}", e);
-            std::future::pending::<()>().await;
-        }
+        tokio::signal::ctrl_c()
+            .await
+            .expect("Failed to install Ctrl+C signal handler");
     };
 
     #[cfg(unix)]
     let terminate = async {
-        match tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate()) {
-            Ok(mut sigterm) => {
-                sigterm.recv().await;
-            }
-            Err(e) => {
-                tracing::error!("Failed to install SIGTERM handler: {}", e);
-                std::future::pending::<()>().await;
-            }
-        }
+        tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+            .expect("Failed to install SIGTERM handler")
+            .recv()
+            .await;
     };
 
     #[cfg(not(unix))]
     let terminate = std::future::pending::<()>();
 
     tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
+        () = ctrl_c => {},
+        () = terminate => {},
     }
     tracing::warn!("Shutdown signal received, starting graceful shutdown of Valygate...");
 }

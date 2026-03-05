@@ -41,10 +41,13 @@ pub struct AppConfig {
 }
 
 impl AppConfig {
+    /// # Errors
+    /// Returns an error if environment variable deserialization fails.
     pub fn from_env() -> Result<Self, envy::Error> {
         envy::from_env::<AppConfig>()
     }
 
+    #[must_use]
     pub fn address(&self) -> String {
         format!("{}:{}", self.server_host, self.server_port)
     }

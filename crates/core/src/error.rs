@@ -1,4 +1,3 @@
-use anyhow;
 use axum::{
     Json,
     http::StatusCode,
@@ -29,7 +28,7 @@ impl IntoResponse for AppError {
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::ProviderTimeout => (StatusCode::GATEWAY_TIMEOUT, "Provider timeout".into()),
             AppError::Internal(err) => {
-                tracing::error!("Internal server error: {:?}", err);
+                tracing::error!(error = %err, "Internal server error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "Internal server error".into(),
