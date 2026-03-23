@@ -1,4 +1,4 @@
-//! SurrealDB facade for ValyGate.
+//! `SurrealDB` facade for `ValyGate`.
 //!
 //! This crate currently keeps one long-lived root client for bootstrap, catalog reads, and
 //! request logging. User-scoped operations still create per-request authenticated clients so
@@ -43,6 +43,133 @@ pub struct Database {
     encryption_key: [u8; 32],
 }
 
+#[allow(clippy::struct_excessive_bools)]
+#[derive(Serialize, SurrealValue)]
+#[surreal(crate = "surrealdb::types")]
+struct SeedModel {
+    alias: String,
+    display_name: String,
+    provider: String,
+    upstream_model: String,
+    description: String,
+    tags: Vec<String>,
+    enabled: bool,
+    context_window_tokens: i64,
+    max_output_tokens: i64,
+    supports_streaming: bool,
+    supports_thinking: bool,
+    thinking_required: bool,
+    supports_temperature: bool,
+    temperature_fixed_to: Option<f64>,
+    temperature_min: Option<f64>,
+    temperature_max: Option<f64>,
+    supports_top_p: bool,
+    supports_system_messages: bool,
+    supports_tools: bool,
+    supports_vision: bool,
+    supports_json_mode: bool,
+    supports_parallel_tool_calls: bool,
+}
+
+fn openai_gpt_4o_mini_seed() -> (&'static str, SeedModel) {
+    (
+        "model_catalog:openai_gpt_4o_mini",
+        SeedModel {
+            alias: "gpt-4o-mini".to_string(),
+            display_name: "GPT-4o Mini".to_string(),
+            provider: "openai".to_string(),
+            upstream_model: "gpt-4o-mini".to_string(),
+            description: "Fast low-cost OpenAI chat model.".to_string(),
+            tags: vec!["chat".to_string(), "fast".to_string()],
+            enabled: true,
+            context_window_tokens: 128_000,
+            max_output_tokens: 16_384,
+            supports_streaming: true,
+            supports_thinking: false,
+            thinking_required: false,
+            supports_temperature: true,
+            temperature_fixed_to: None,
+            temperature_min: Some(0.0),
+            temperature_max: Some(2.0),
+            supports_top_p: true,
+            supports_system_messages: true,
+            supports_tools: true,
+            supports_vision: true,
+            supports_json_mode: true,
+            supports_parallel_tool_calls: true,
+        },
+    )
+}
+
+fn openai_gpt_4o_seed() -> (&'static str, SeedModel) {
+    (
+        "model_catalog:openai_gpt_4o",
+        SeedModel {
+            alias: "gpt-4o".to_string(),
+            display_name: "GPT-4o".to_string(),
+            provider: "openai".to_string(),
+            upstream_model: "gpt-4o".to_string(),
+            description: "General-purpose OpenAI flagship model.".to_string(),
+            tags: vec!["chat".to_string(), "flagship".to_string()],
+            enabled: true,
+            context_window_tokens: 128_000,
+            max_output_tokens: 16_384,
+            supports_streaming: true,
+            supports_thinking: false,
+            thinking_required: false,
+            supports_temperature: true,
+            temperature_fixed_to: None,
+            temperature_min: Some(0.0),
+            temperature_max: Some(2.0),
+            supports_top_p: true,
+            supports_system_messages: true,
+            supports_tools: true,
+            supports_vision: true,
+            supports_json_mode: true,
+            supports_parallel_tool_calls: true,
+        },
+    )
+}
+
+fn anthropic_claude_3_7_sonnet_seed() -> (&'static str, SeedModel) {
+    (
+        "model_catalog:anthropic_claude_3_7_sonnet",
+        SeedModel {
+            alias: "claude-3-7-sonnet".to_string(),
+            display_name: "Claude 3.7 Sonnet".to_string(),
+            provider: "anthropic".to_string(),
+            upstream_model: "claude-3-7-sonnet-latest".to_string(),
+            description: "Anthropic reasoning-capable chat model.".to_string(),
+            tags: vec!["chat".to_string(), "thinking".to_string()],
+            enabled: true,
+            context_window_tokens: 200_000,
+            max_output_tokens: 8_192,
+            supports_streaming: true,
+            supports_thinking: true,
+            thinking_required: false,
+            supports_temperature: true,
+            temperature_fixed_to: Some(1.0),
+            temperature_min: Some(1.0),
+            temperature_max: Some(1.0),
+            supports_top_p: false,
+            supports_system_messages: true,
+            supports_tools: false,
+            supports_vision: true,
+            supports_json_mode: false,
+            supports_parallel_tool_calls: false,
+        },
+    )
+}
+
+fn model_catalog_seeds() -> [(&'static str, SeedModel); 3] {
+    [
+        openai_gpt_4o_mini_seed(),
+        openai_gpt_4o_seed(),
+        anthropic_claude_3_7_sonnet_seed(),
+    ]
+}
+
+#[allow(clippy::missing_errors_doc)]
 impl Database {
     pub async fn connect(config: DatabaseConfig) -> Result<Self, DatabaseError> {
         config.validate()?;
@@ -638,118 +765,7 @@ impl Database {
     }
 
     async fn seed_model_catalog(&self) -> Result<(), DatabaseError> {
-        #[derive(Serialize, SurrealValue)]
-        #[surreal(crate = "surrealdb::types")]
-        struct SeedModel {
-            alias: String,
-            display_name: String,
-            provider: String,
-            upstream_model: String,
-            description: String,
-            tags: Vec<String>,
-            enabled: bool,
-            context_window_tokens: i64,
-            max_output_tokens: i64,
-            supports_streaming: bool,
-            supports_thinking: bool,
-            thinking_required: bool,
-            supports_temperature: bool,
-            temperature_fixed_to: Option<f64>,
-            temperature_min: Option<f64>,
-            temperature_max: Option<f64>,
-            supports_top_p: bool,
-            supports_system_messages: bool,
-            supports_tools: bool,
-            supports_vision: bool,
-            supports_json_mode: bool,
-            supports_parallel_tool_calls: bool,
-        }
-
-        let seeds = [
-            (
-                "model_catalog:openai_gpt_4o_mini",
-                SeedModel {
-                    alias: "gpt-4o-mini".to_string(),
-                    display_name: "GPT-4o Mini".to_string(),
-                    provider: "openai".to_string(),
-                    upstream_model: "gpt-4o-mini".to_string(),
-                    description: "Fast low-cost OpenAI chat model.".to_string(),
-                    tags: vec!["chat".to_string(), "fast".to_string()],
-                    enabled: true,
-                    context_window_tokens: 128_000,
-                    max_output_tokens: 16_384,
-                    supports_streaming: true,
-                    supports_thinking: false,
-                    thinking_required: false,
-                    supports_temperature: true,
-                    temperature_fixed_to: None,
-                    temperature_min: Some(0.0),
-                    temperature_max: Some(2.0),
-                    supports_top_p: true,
-                    supports_system_messages: true,
-                    supports_tools: true,
-                    supports_vision: true,
-                    supports_json_mode: true,
-                    supports_parallel_tool_calls: true,
-                },
-            ),
-            (
-                "model_catalog:openai_gpt_4o",
-                SeedModel {
-                    alias: "gpt-4o".to_string(),
-                    display_name: "GPT-4o".to_string(),
-                    provider: "openai".to_string(),
-                    upstream_model: "gpt-4o".to_string(),
-                    description: "General-purpose OpenAI flagship model.".to_string(),
-                    tags: vec!["chat".to_string(), "flagship".to_string()],
-                    enabled: true,
-                    context_window_tokens: 128_000,
-                    max_output_tokens: 16_384,
-                    supports_streaming: true,
-                    supports_thinking: false,
-                    thinking_required: false,
-                    supports_temperature: true,
-                    temperature_fixed_to: None,
-                    temperature_min: Some(0.0),
-                    temperature_max: Some(2.0),
-                    supports_top_p: true,
-                    supports_system_messages: true,
-                    supports_tools: true,
-                    supports_vision: true,
-                    supports_json_mode: true,
-                    supports_parallel_tool_calls: true,
-                },
-            ),
-            (
-                "model_catalog:anthropic_claude_3_7_sonnet",
-                SeedModel {
-                    alias: "claude-3-7-sonnet".to_string(),
-                    display_name: "Claude 3.7 Sonnet".to_string(),
-                    provider: "anthropic".to_string(),
-                    upstream_model: "claude-3-7-sonnet-latest".to_string(),
-                    description: "Anthropic reasoning-capable chat model.".to_string(),
-                    tags: vec!["chat".to_string(), "thinking".to_string()],
-                    enabled: true,
-                    context_window_tokens: 200_000,
-                    max_output_tokens: 8_192,
-                    supports_streaming: true,
-                    supports_thinking: true,
-                    thinking_required: false,
-                    supports_temperature: true,
-                    temperature_fixed_to: Some(1.0),
-                    temperature_min: Some(1.0),
-                    temperature_max: Some(1.0),
-                    supports_top_p: false,
-                    supports_system_messages: true,
-                    supports_tools: false,
-                    supports_vision: true,
-                    supports_json_mode: false,
-                    supports_parallel_tool_calls: false,
-                },
-            ),
-        ];
-
-        for (record_id, record) in seeds {
+        for (record_id, record) in model_catalog_seeds() {
             self.client
                 .query("UPSERT type::record('model_catalog', $id) CONTENT $record;")
                 .bind((

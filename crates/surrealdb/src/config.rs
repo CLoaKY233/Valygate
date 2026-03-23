@@ -18,6 +18,7 @@ pub struct DatabaseConfig {
     pub surreal_encryption_key: String,
 }
 
+#[allow(clippy::missing_errors_doc)]
 impl DatabaseConfig {
     pub fn validate(&self) -> Result<(), crate::DatabaseError> {
         if self.surreal_url.trim().is_empty() {

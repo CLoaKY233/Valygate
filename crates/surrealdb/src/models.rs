@@ -67,6 +67,7 @@ pub struct VirtualApiKey {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+#[allow(clippy::struct_excessive_bools)]
 pub struct ModelCatalogEntry {
     pub id: RecordId,
     pub alias: String,

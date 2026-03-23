@@ -21,6 +21,8 @@ pub struct CanonicalChatRequest {
 }
 
 impl CanonicalChatRequest {
+    /// # Errors
+    /// Returns an error when required request fields are missing.
     pub fn from_value(mut payload: Value) -> Result<Self> {
         let model = payload
             .get("model")
@@ -58,6 +60,7 @@ impl CanonicalChatRequest {
         })
     }
 
+    #[must_use]
     pub fn provider_options_for(&self, provider: &str) -> Option<&Map<String, Value>> {
         self.provider_options.get(provider)?.as_object()
     }

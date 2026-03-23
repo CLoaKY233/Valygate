@@ -95,6 +95,7 @@ struct CreateVirtualKeyResponse {
 }
 
 #[derive(Serialize)]
+#[allow(clippy::struct_excessive_bools)]
 struct ModelResponse {
     id: String,
     alias: String,

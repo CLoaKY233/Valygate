@@ -58,9 +58,9 @@ pub fn decrypt_secret(
 
 pub fn generate_virtual_api_key() -> Result<String, DatabaseError> {
     let mut random_bytes = [0_u8; VIRTUAL_API_KEY_BYTES];
-    SysRng
-        .try_fill_bytes(&mut random_bytes)
-        .map_err(|error| DatabaseError::Crypto(format!("failed to generate API key bytes: {error}")))?;
+    SysRng.try_fill_bytes(&mut random_bytes).map_err(|error| {
+        DatabaseError::Crypto(format!("failed to generate API key bytes: {error}"))
+    })?;
     Ok(format!("vg_{}", hex::encode(random_bytes)))
 }
 

@@ -92,7 +92,7 @@ impl ProviderAdapter for AnthropicAdapter {
         }
 
         if let Some(body_object) = body.as_object_mut() {
-            merge_provider_options(body_object, request.provider_options_for(self.name()))?;
+            merge_provider_options(body_object, request.provider_options_for(self.name()));
         }
 
         Ok(body)
@@ -288,7 +288,7 @@ impl AnthropicStreamState {
                     self.completion_id = id.to_string();
                 }
                 if !self.sent_role {
-                    chunks.push(self.chunk(json!({
+                    chunks.push(self.chunk(&json!({
                         "choices": [{
                             "index": 0,
                             "delta": { "role": "assistant" },
@@ -308,7 +308,7 @@ impl AnthropicStreamState {
 
                 if !text.is_empty() {
                     if !self.sent_role {
-                        chunks.push(self.chunk(json!({
+                        chunks.push(self.chunk(&json!({
                             "choices": [{
                                 "index": 0,
                                 "delta": { "role": "assistant" },
@@ -318,7 +318,7 @@ impl AnthropicStreamState {
                         self.sent_role = true;
                     }
 
-                    chunks.push(self.chunk(json!({
+                    chunks.push(self.chunk(&json!({
                         "choices": [{
                             "index": 0,
                             "delta": { "content": text },
@@ -364,7 +364,7 @@ impl AnthropicStreamState {
 
         self.done_sent = true;
         vec![
-            self.chunk(json!({
+            self.chunk(&json!({
                 "choices": [{
                     "index": 0,
                     "delta": {},
@@ -375,7 +375,7 @@ impl AnthropicStreamState {
         ]
     }
 
-    fn chunk(&self, body: Value) -> String {
+    fn chunk(&self, body: &Value) -> String {
         let mut chunk = json!({
             "id": self.completion_id,
             "object": "chat.completion.chunk",
@@ -426,7 +426,7 @@ fn validate_provider_options(
 fn merge_provider_options(
     body: &mut serde_json::Map<String, Value>,
     provider_options: Option<&serde_json::Map<String, Value>>,
-) -> Result<()> {
+) {
     if let Some(provider_options) = provider_options {
         for (key, value) in provider_options {
             if ANTHROPIC_ALLOWED_PROVIDER_KEYS.contains(&key.as_str()) {
@@ -434,8 +434,6 @@ fn merge_provider_options(
             }
         }
     }
-
-    Ok(())
 }
 
 fn map_finish_reason(value: Option<&Value>) -> Value {

@@ -34,6 +34,9 @@ struct RequestLogDraft<'a> {
 }
 
 impl ProxyExecutor {
+    /// # Errors
+    /// Returns an error when request validation, route resolution, upstream calls, or response
+    /// translation fails.
     pub async fn execute_chat_completion(
         state: Arc<AppState>,
         raw_key: &str,
@@ -150,6 +153,8 @@ fn validate_model_capabilities(
     request: &CanonicalChatRequest,
     route: &ResolvedProxyRoute,
 ) -> anyhow::Result<Option<f64>> {
+    const FLOAT_TOLERANCE: f64 = f64::EPSILON;
+
     if request.stream && !route.model.supports_streaming {
         anyhow::bail!("model does not support streaming");
     }
@@ -160,7 +165,7 @@ fn validate_model_capabilities(
 
     let enforced_temperature = if let Some(fixed) = route.model.temperature_fixed_to {
         match request.temperature {
-            Some(requested) if requested != fixed => {
+            Some(requested) if (requested - fixed).abs() > FLOAT_TOLERANCE => {
                 anyhow::bail!("temperature must be {fixed} for this model");
             }
             _ => Some(fixed),
@@ -230,11 +235,16 @@ pub struct UsageSummary {
 pub trait ProviderAdapter: Sync {
     fn name(&self) -> &'static str;
     fn target_url(&self) -> &'static str;
+    /// # Errors
+    /// Returns an error when provider-specific constraints are not met for the request or route.
     fn validate_request(
         &self,
         request: &CanonicalChatRequest,
         route: &ResolvedProxyRoute,
     ) -> anyhow::Result<()>;
+    /// # Errors
+    /// Returns an error when the canonical request cannot be translated into a valid provider
+    /// payload.
     fn prepare_body(
         &self,
         request: &CanonicalChatRequest,
@@ -252,6 +262,9 @@ pub trait ProviderAdapter: Sync {
         request: &CanonicalChatRequest,
         route: &ResolvedProxyRoute,
     ) -> Value;
+    /// # Errors
+    /// Returns an error when the provider stream cannot be translated into OpenAI-compatible SSE
+    /// chunks.
     fn translate_stream_response(
         &self,
         upstream: reqwest::Response,
@@ -306,17 +319,16 @@ async fn persist_request_log_or_warn(state: Arc<AppState>, log: RequestLogInput)
 }
 
 fn upstream_status_code_or_warn(status_code: i64, upstream: &str) -> StatusCode {
-    match u16::try_from(status_code)
+    if let Some(status) = u16::try_from(status_code)
         .ok()
         .and_then(|status| StatusCode::from_u16(status).ok())
     {
-        Some(status) => status,
-        None => {
-            warn!(
-                status_code,
-                upstream, "invalid upstream status code, falling back to 502"
-            );
-            StatusCode::BAD_GATEWAY
-        }
+        status
+    } else {
+        warn!(
+            status_code,
+            upstream, "invalid upstream status code, falling back to 502"
+        );
+        StatusCode::BAD_GATEWAY
     }
 }
