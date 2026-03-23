@@ -322,7 +322,7 @@ impl Database {
             .await?;
 
         let client = self.fresh_client_with_token(token).await?;
-        let raw_key = generate_virtual_api_key();
+        let raw_key = generate_virtual_api_key()?;
 
         let created = client
             .query(

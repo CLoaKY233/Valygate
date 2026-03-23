@@ -56,12 +56,12 @@ pub fn decrypt_secret(
         .map_err(|_| DatabaseError::Crypto("provider secret is not valid utf-8".into()))
 }
 
-pub fn generate_virtual_api_key() -> String {
+pub fn generate_virtual_api_key() -> Result<String, DatabaseError> {
     let mut random_bytes = [0_u8; VIRTUAL_API_KEY_BYTES];
     SysRng
         .try_fill_bytes(&mut random_bytes)
-        .expect("system RNG must be available");
-    format!("vg_{}", hex::encode(random_bytes))
+        .map_err(|error| DatabaseError::Crypto(format!("failed to generate API key bytes: {error}")))?;
+    Ok(format!("vg_{}", hex::encode(random_bytes)))
 }
 
 pub fn hash_virtual_api_key(raw_key: &str) -> String {
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn virtual_api_key_hash_is_stable() {
-        let raw_key = generate_virtual_api_key();
+        let raw_key = generate_virtual_api_key().expect("virtual API key generation must work");
         let hash_one = hash_virtual_api_key(&raw_key);
         let hash_two = hash_virtual_api_key(&raw_key);
 

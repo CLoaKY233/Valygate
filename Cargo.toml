@@ -24,7 +24,6 @@ uuid.workspace = true
 async-stream.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
-pbkdf2.workspace = true
 
 
 [workspace]

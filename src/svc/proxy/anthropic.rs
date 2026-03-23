@@ -55,6 +55,8 @@ impl ProviderAdapter for AnthropicAdapter {
                 .get("content")
                 .and_then(Value::as_str)
                 .ok_or_else(|| {
+                    // TODO(VG-ANTH-STRUCTURED-CONTENT): support array/structured content blocks
+                    // (images, tool results, vision outputs) instead of string-only MVP handling.
                     anyhow!("only string message content is supported for anthropic in MVP")
                 })?;
 

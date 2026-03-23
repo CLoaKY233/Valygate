@@ -4723,7 +4723,6 @@ dependencies = [
  "dotenvy",
  "envy",
  "futures-util",
- "pbkdf2",
  "reqwest",
  "serde",
  "serde_json",
