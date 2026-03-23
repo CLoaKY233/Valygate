@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use valygate_surrealdb::DatabaseConfig;
 
 fn default_host() -> String {
     "0.0.0.0".to_string()
@@ -38,6 +39,18 @@ pub struct AppConfig {
 
     #[serde(default = "default_timeout_secs")]
     pub http_timeout_secs: u64,
+
+    pub surreal_url: String,
+
+    pub surreal_namespace: String,
+
+    pub surreal_database: String,
+
+    pub surreal_username: String,
+
+    pub surreal_password: String,
+
+    pub surreal_encryption_key: String,
 }
 
 impl AppConfig {
@@ -50,5 +63,17 @@ impl AppConfig {
     #[must_use]
     pub fn address(&self) -> String {
         format!("{}:{}", self.server_host, self.server_port)
+    }
+
+    #[must_use]
+    pub fn database_config(&self) -> DatabaseConfig {
+        DatabaseConfig {
+            surreal_url: self.surreal_url.clone(),
+            surreal_namespace: self.surreal_namespace.clone(),
+            surreal_database: self.surreal_database.clone(),
+            surreal_username: self.surreal_username.clone(),
+            surreal_password: self.surreal_password.clone(),
+            surreal_encryption_key: self.surreal_encryption_key.clone(),
+        }
     }
 }

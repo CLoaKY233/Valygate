@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::info;
+use valygate_surrealdb::Database;
 
 use super::{config::AppConfig, state::AppState};
 
@@ -44,9 +45,18 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
         .build()
         .context("Failed to build HTTP client")?;
 
+    let database = Database::connect(config.database_config())
+        .await
+        .context("Failed to connect to SurrealDB")?;
+    database
+        .bootstrap()
+        .await
+        .context("Failed to bootstrap SurrealDB schema")?;
+
     let state = Arc::new(AppState {
         config,
         http_client,
+        database,
     });
 
     Ok((state, listener))

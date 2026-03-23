@@ -2,7 +2,10 @@ use anyhow::Result;
 use axum::routing::get;
 use tower_http::trace::TraceLayer;
 use tracing::info;
-use valygate::{rts::root::root_handler, sys::init::initialize};
+use valygate::{
+    rts::{root::root_handler, v1},
+    sys::init::initialize,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,6 +25,7 @@ async fn main() -> Result<()> {
 
     let app = axum::Router::new()
         .route("/", get(root_handler))
+        .merge(v1::router())
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

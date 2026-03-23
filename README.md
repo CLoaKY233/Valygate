@@ -15,6 +15,3 @@
 | **Observability** | 🟢 Working | Request‑level tracing, Prometheus metrics (`latency_p95`, `errors_total`) |
 | **Rate Limiting** | 🟡 Planned | Per‑API‑key, per‑tenant quotas |
 | **Prompt Mgmt** | 🔴 Planned | Versioning, A/B testing, deployment |
-
-
-
