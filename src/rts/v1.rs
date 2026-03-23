@@ -9,6 +9,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use surrealdb_types::ToSql;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use valygate_core::error::AppError;
@@ -27,7 +28,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/me", get(me).patch(update_me))
         .route("/providers", get(list_providers).post(create_provider))
         .route(
-            "/providers/:provider_id",
+            "/providers/{provider_id}",
             get(get_provider)
                 .patch(update_provider)
                 .delete(delete_provider),
@@ -37,13 +38,13 @@ pub fn router() -> Router<Arc<AppState>> {
             get(list_virtual_keys).post(create_virtual_key),
         )
         .route(
-            "/virtual-keys/:key_id",
+            "/virtual-keys/{key_id}",
             get(get_virtual_key)
                 .patch(update_virtual_key)
                 .delete(delete_virtual_key),
         )
         .route("/models", get(list_models))
-        .route("/models/:alias", get(get_model))
+        .route("/models/{alias}", get(get_model))
         .route("/v1/chat/completions", post(chat_completions))
 }
 
@@ -306,7 +307,7 @@ async fn get_provider(
             );
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Provider not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
@@ -345,7 +346,7 @@ async fn update_provider(
             );
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Provider not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
@@ -374,7 +375,7 @@ async fn delete_provider(
             );
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Provider not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
@@ -442,7 +443,7 @@ async fn get_virtual_key(
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "get_virtual_key failed");
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Virtual key not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
 
@@ -473,7 +474,7 @@ async fn update_virtual_key(
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key failed");
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Virtual key not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
 
@@ -493,7 +494,7 @@ async fn delete_virtual_key(
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "delete_virtual_key failed");
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Virtual key not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
 
@@ -531,7 +532,7 @@ async fn get_model(
             error!(error = %error, token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model failed");
             internal_error(error)
         })?
-        .ok_or_else(|| AppError::BadRequest("Model not found".into()))?;
+        .ok_or_else(|| AppError::NotFound("Model not found".into()))?;
     Ok(Json(map_model(&model)))
 }
 
@@ -604,7 +605,7 @@ fn token_fingerprint(token: &str) -> String {
 
 fn map_user(user: &User) -> UserResponse {
     UserResponse {
-        id: user.id.to_string(),
+        id: user.id.to_sql(),
         name: user.name.clone(),
         email: user.email.clone(),
         enabled: user.enabled,
@@ -613,7 +614,7 @@ fn map_user(user: &User) -> UserResponse {
 
 fn map_provider(provider: &ProviderCredential) -> ProviderResponse {
     ProviderResponse {
-        id: provider.id.to_string(),
+        id: provider.id.to_sql(),
         provider: provider.provider.clone(),
         label: provider.label.clone(),
         tags: provider.tags.clone(),
@@ -626,7 +627,7 @@ fn map_provider(provider: &ProviderCredential) -> ProviderResponse {
 
 fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
     VirtualKeyResponse {
-        id: key.id.to_string(),
+        id: key.id.to_sql(),
         name: key.name.clone(),
         key_prefix: key.key_prefix.clone(),
         allowed_models: key.allowed_models.clone(),
@@ -641,7 +642,7 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
 
 fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
     ModelResponse {
-        id: model.id.to_string(),
+        id: model.id.to_sql(),
         alias: model.alias.clone(),
         display_name: model.display_name.clone(),
         provider: model.provider.clone(),

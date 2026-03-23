@@ -425,8 +425,6 @@ fn merge_provider_options(
     body: &mut serde_json::Map<String, Value>,
     provider_options: Option<&serde_json::Map<String, Value>>,
 ) -> Result<()> {
-    validate_provider_options(provider_options)?;
-
     if let Some(provider_options) = provider_options {
         for (key, value) in provider_options {
             if ANTHROPIC_ALLOWED_PROVIDER_KEYS.contains(&key.as_str()) {

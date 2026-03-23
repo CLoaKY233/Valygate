@@ -7,6 +7,8 @@ use valygate_surrealdb::ResolvedProxyRoute;
 
 pub struct OpenAiAdapter;
 
+const OPENAI_ALLOWED_PROVIDER_KEYS: &[&str] = &["service_tier", "reasoning"];
+
 impl ProviderAdapter for OpenAiAdapter {
     fn name(&self) -> &'static str {
         "openai"
@@ -90,7 +92,9 @@ impl ProviderAdapter for OpenAiAdapter {
 
             if let Some(provider_options) = request.provider_options_for(self.name()) {
                 for (key, value) in provider_options {
-                    body.insert(key.clone(), value.clone());
+                    if OPENAI_ALLOWED_PROVIDER_KEYS.contains(&key.as_str()) {
+                        body.insert(key.clone(), value.clone());
+                    }
                 }
             }
         }

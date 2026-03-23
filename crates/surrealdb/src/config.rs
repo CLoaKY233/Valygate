@@ -175,6 +175,16 @@ mod tests {
     }
 
     #[test]
+    fn accepts_base64_encryption_key() {
+        let config = config_with_key("AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=");
+        let bytes = config
+            .encryption_key_bytes()
+            .expect("base64 key must decode");
+        assert_eq!(bytes[0], 0);
+        assert_eq!(bytes[31], 31);
+    }
+
+    #[test]
     fn accepts_pbkdf2_passphrase_key() {
         let config =
             config_with_key("pbkdf2$1000$MDEyMzQ1Njc4OWFiY2RlZg==$correct horse battery staple");

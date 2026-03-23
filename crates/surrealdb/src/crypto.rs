@@ -3,7 +3,7 @@ use aes_gcm::{
     aead::{Aead, KeyInit},
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
-use rand::{RngCore, rngs::OsRng};
+use rand::{TryRng, rngs::SysRng};
 use sha2::{Digest, Sha256};
 
 use crate::DatabaseError;
@@ -17,7 +17,9 @@ pub fn encrypt_secret(
 ) -> Result<String, DatabaseError> {
     let cipher = build_cipher(key_material);
     let mut nonce_bytes = [0_u8; NONCE_SIZE];
-    OsRng.fill_bytes(&mut nonce_bytes);
+    SysRng
+        .try_fill_bytes(&mut nonce_bytes)
+        .map_err(|error| DatabaseError::Crypto(format!("failed to generate nonce: {error}")))?;
 
     let ciphertext = cipher
         .encrypt(Nonce::from_slice(&nonce_bytes), plaintext.as_bytes())
@@ -56,7 +58,9 @@ pub fn decrypt_secret(
 
 pub fn generate_virtual_api_key() -> String {
     let mut random_bytes = [0_u8; VIRTUAL_API_KEY_BYTES];
-    OsRng.fill_bytes(&mut random_bytes);
+    SysRng
+        .try_fill_bytes(&mut random_bytes)
+        .expect("system RNG must be available");
     format!("vg_{}", hex::encode(random_bytes))
 }
 

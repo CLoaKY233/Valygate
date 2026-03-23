@@ -1,10 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use surrealdb::sql::Thing;
+use surrealdb::types::{RecordId, SurrealValue};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct User {
-    pub id: Thing,
+    pub id: RecordId,
     pub name: String,
     pub email: String,
     pub enabled: bool,
@@ -18,7 +18,7 @@ pub struct AuthSession {
     pub token: String,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, SurrealValue)]
 pub enum ProviderKind {
     #[serde(rename = "openai")]
     OpenAi,
@@ -36,10 +36,10 @@ impl ProviderKind {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct ProviderCredential {
-    pub id: Thing,
-    pub user: Thing,
+    pub id: RecordId,
+    pub user: RecordId,
     pub provider: String,
     pub label: String,
     pub encrypted_api_key: String,
@@ -50,10 +50,10 @@ pub struct ProviderCredential {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct VirtualApiKey {
-    pub id: Thing,
-    pub user: Thing,
+    pub id: RecordId,
+    pub user: RecordId,
     pub name: String,
     pub key_prefix: String,
     pub key_hash: String,
@@ -66,9 +66,9 @@ pub struct VirtualApiKey {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct ModelCatalogEntry {
-    pub id: Thing,
+    pub id: RecordId,
     pub alias: String,
     pub display_name: String,
     pub provider: String,
@@ -95,12 +95,12 @@ pub struct ModelCatalogEntry {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct RequestLog {
-    pub id: Thing,
+    pub id: RecordId,
     pub request_id: String,
-    pub user: Thing,
-    pub virtual_api_key: Option<Thing>,
+    pub user: RecordId,
+    pub virtual_api_key: Option<RecordId>,
     pub model_alias: String,
     pub provider: String,
     pub upstream_model: String,
@@ -114,25 +114,25 @@ pub struct RequestLog {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct SignupInput {
     pub name: String,
     pub email: String,
     pub password: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct SigninInput {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct UpdateProfileInput {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct CreateProviderCredentialInput {
     pub provider: ProviderKind,
     pub label: String,
@@ -140,7 +140,7 @@ pub struct CreateProviderCredentialInput {
     pub tags: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct UpdateProviderCredentialInput {
     pub label: String,
     pub api_key: Option<String>,
@@ -148,7 +148,7 @@ pub struct UpdateProviderCredentialInput {
     pub enabled: bool,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct CreateVirtualApiKeyInput {
     pub name: String,
     pub allowed_models: Vec<String>,
@@ -156,7 +156,7 @@ pub struct CreateVirtualApiKeyInput {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct UpdateVirtualApiKeyInput {
     pub name: String,
     pub allowed_models: Vec<String>,
@@ -165,19 +165,19 @@ pub struct UpdateVirtualApiKeyInput {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct CreatedVirtualApiKey {
     pub record: VirtualApiKey,
     pub raw_key: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct VerifiedVirtualApiKey {
     pub key: VirtualApiKey,
-    pub user_id: Thing,
+    pub user_id: RecordId,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct ResolvedProxyRoute {
     pub user: User,
     pub key: VirtualApiKey,
@@ -185,7 +185,7 @@ pub struct ResolvedProxyRoute {
     pub provider_credential: ProviderCredential,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct RequestLogInput {
     pub request_id: String,
     pub user_id: String,

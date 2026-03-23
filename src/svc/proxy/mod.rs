@@ -11,6 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::Value;
+use surrealdb_types::ToSql;
 use tracing::{info, warn};
 use valygate_core::error::AppError;
 use valygate_surrealdb::{RequestLogInput, ResolvedProxyRoute};
@@ -77,7 +78,8 @@ impl ProxyExecutor {
             .map_err(|error| AppError::Internal(error.into()))?;
 
         let status_code = i64::from(upstream.status().as_u16());
-        let latency_ms = started_at.elapsed().as_millis() as i64;
+        let ms = started_at.elapsed().as_millis();
+        let latency_ms = i64::try_from(ms).unwrap_or(i64::MAX);
 
         if canonical_request.stream {
             if let Some(headers) = adapter.stream_headers() {
@@ -102,12 +104,9 @@ impl ProxyExecutor {
                 )
                 .await;
 
-                return Ok((
-                    StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::OK),
-                    headers,
-                    stream_body,
-                )
-                    .into_response());
+                let response_status =
+                    upstream_status_code_or_warn(status_code, adapter.target_url());
+                return Ok((response_status, headers, stream_body).into_response());
             }
 
             return Err(AppError::BadRequest(format!(
@@ -142,11 +141,8 @@ impl ProxyExecutor {
         )
         .await;
 
-        Ok((
-            StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::OK),
-            Json(translated),
-        )
-            .into_response())
+        let response_status = upstream_status_code_or_warn(status_code, adapter.target_url());
+        Ok((response_status, Json(translated)).into_response())
     }
 }
 
@@ -201,8 +197,8 @@ fn validate_model_capabilities(
 fn build_request_log(draft: RequestLogDraft<'_>) -> RequestLogInput {
     RequestLogInput {
         request_id: draft.request_id.to_string(),
-        user_id: draft.route.user.id.to_string(),
-        virtual_api_key_id: Some(draft.route.key.id.to_string()),
+        user_id: draft.route.user.id.to_sql(),
+        virtual_api_key_id: Some(draft.route.key.id.to_sql()),
         model_alias: draft.route.model.alias.clone(),
         provider: draft.route.model.provider.clone(),
         upstream_model: draft.route.model.upstream_model.clone(),
@@ -306,5 +302,21 @@ async fn persist_request_log_or_warn(state: Arc<AppState>, log: RequestLogInput)
         );
     } else {
         info!(%request_id, %model_alias, status_code, "persisted request log");
+    }
+}
+
+fn upstream_status_code_or_warn(status_code: i64, upstream: &str) -> StatusCode {
+    match u16::try_from(status_code)
+        .ok()
+        .and_then(|status| StatusCode::from_u16(status).ok())
+    {
+        Some(status) => status,
+        None => {
+            warn!(
+                status_code,
+                upstream, "invalid upstream status code, falling back to 502"
+            );
+            StatusCode::BAD_GATEWAY
+        }
     }
 }

@@ -17,8 +17,8 @@ use serde::Serialize;
 use surrealdb::{
     Surreal,
     engine::any,
-    opt::auth::{Jwt, Record, Root},
-    sql::Thing,
+    opt::auth::{Record, Root, Token},
+    types::{RecordId, SurrealValue, ToSql},
 };
 use tracing::info;
 
@@ -55,8 +55,8 @@ impl Database {
             .await?;
         client
             .signin(Root {
-                username: &config.surreal_username,
-                password: &config.surreal_password,
+                username: config.surreal_username.clone(),
+                password: config.surreal_password.clone(),
             })
             .await?;
 
@@ -85,23 +85,24 @@ impl Database {
     }
 
     pub async fn signup_user(&self, input: SignupInput) -> Result<AuthSession, DatabaseError> {
-        #[derive(Serialize)]
-        struct Params<'a> {
-            name: &'a str,
-            email: &'a str,
-            password: &'a str,
+        #[derive(Serialize, SurrealValue)]
+        #[surreal(crate = "surrealdb::types")]
+        struct Params {
+            name: String,
+            email: String,
+            password: String,
         }
 
         let user_client = self.fresh_client().await?;
-        let token: Jwt = user_client
+        let token: Token = user_client
             .signup(Record {
-                access: "account",
-                namespace: &self.config.surreal_namespace,
-                database: &self.config.surreal_database,
+                access: "account".to_string(),
+                namespace: self.config.surreal_namespace.clone(),
+                database: self.config.surreal_database.clone(),
                 params: Params {
-                    name: &input.name,
-                    email: &input.email,
-                    password: &input.password,
+                    name: input.name.clone(),
+                    email: input.email.clone(),
+                    password: input.password.clone(),
                 },
             })
             .await?;
@@ -114,26 +115,27 @@ impl Database {
 
         Ok(AuthSession {
             user,
-            token: token.into_insecure_token(),
+            token: token.access.into_insecure_token(),
         })
     }
 
     pub async fn signin_user(&self, input: SigninInput) -> Result<AuthSession, DatabaseError> {
-        #[derive(Serialize)]
-        struct Params<'a> {
-            email: &'a str,
-            password: &'a str,
+        #[derive(Serialize, SurrealValue)]
+        #[surreal(crate = "surrealdb::types")]
+        struct Params {
+            email: String,
+            password: String,
         }
 
         let user_client = self.fresh_client().await?;
-        let token: Jwt = user_client
+        let token: Token = user_client
             .signin(Record {
-                access: "account",
-                namespace: &self.config.surreal_namespace,
-                database: &self.config.surreal_database,
+                access: "account".to_string(),
+                namespace: self.config.surreal_namespace.clone(),
+                database: self.config.surreal_database.clone(),
                 params: Params {
-                    email: &input.email,
-                    password: &input.password,
+                    email: input.email.clone(),
+                    password: input.password.clone(),
                 },
             })
             .await?;
@@ -146,7 +148,7 @@ impl Database {
 
         Ok(AuthSession {
             user,
-            token: token.into_insecure_token(),
+            token: token.access.into_insecure_token(),
         })
     }
 
@@ -252,12 +254,11 @@ impl Database {
                     enabled: $enabled,
                     updated_at: time::now()
                 };
-                UPDATE $provider_id MERGE
-                    IF $encrypted_api_key = NONE {
-                        $update
-                    } ELSE {
-                        $update.merge({ encrypted_api_key: $encrypted_api_key })
-                    };",
+                UPDATE $provider_id MERGE (
+                    $encrypted_api_key = NONE
+                        ? $update
+                        : $update.merge({ encrypted_api_key: $encrypted_api_key })
+                );",
             )
             .bind(("provider_id", provider_id.clone()))
             .bind(("label", input.label))
@@ -266,7 +267,7 @@ impl Database {
             .bind(("encrypted_api_key", encrypted_api_key))
             .await?;
 
-        self.get_provider_credential(token, &provider_id.to_string())
+        self.get_provider_credential(token, &provider_id.to_sql())
             .await
     }
 
@@ -384,7 +385,7 @@ impl Database {
             .bind(("expires_at", input.expires_at))
             .await?;
 
-        self.get_virtual_api_key(token, &key_id.to_string()).await
+        self.get_virtual_api_key(token, &key_id.to_sql()).await
     }
 
     pub async fn delete_virtual_api_key(
@@ -407,7 +408,7 @@ impl Database {
         token: &str,
     ) -> Result<Vec<ModelCatalogEntry>, DatabaseError> {
         let user = self.authenticate_user(token).await?;
-        self.list_usable_models_for_user(&user.id.to_string()).await
+        self.list_usable_models_for_user(&user.id.to_sql()).await
     }
 
     pub async fn get_model_by_alias_for_user(
@@ -416,9 +417,7 @@ impl Database {
         alias: &str,
     ) -> Result<Option<ModelCatalogEntry>, DatabaseError> {
         let user = self.authenticate_user(token).await?;
-        let models = self
-            .list_usable_models_for_user(&user.id.to_string())
-            .await?;
+        let models = self.list_usable_models_for_user(&user.id.to_sql()).await?;
         Ok(models.into_iter().find(|model| model.alias == alias))
     }
 
@@ -550,11 +549,12 @@ impl Database {
         &self,
         input: RequestLogInput,
     ) -> Result<Option<RequestLog>, DatabaseError> {
-        #[derive(Serialize)]
+        #[derive(Serialize, SurrealValue)]
+        #[surreal(crate = "surrealdb::types")]
         struct RequestLogRecord {
             request_id: String,
-            user: Thing,
-            virtual_api_key: Option<Thing>,
+            user: RecordId,
+            virtual_api_key: Option<RecordId>,
             model_alias: String,
             provider: String,
             upstream_model: String,
@@ -605,38 +605,48 @@ impl Database {
     }
 
     async fn ensure_model_aliases_exist(&self, aliases: &[String]) -> Result<(), DatabaseError> {
-        for alias in aliases {
-            let exists = self
-                .client
-                .query(
-                    "SELECT VALUE count() > 0 FROM model_catalog
-                     WHERE alias = $alias AND enabled = true
-                     GROUP ALL;",
-                )
-                .bind(("alias", alias.clone()))
-                .await?
-                .take::<Option<bool>>(0)?
-                .unwrap_or(false);
+        if aliases.is_empty() {
+            return Ok(());
+        }
 
-            if !exists {
-                return Err(DatabaseError::InvalidConfig(format!(
-                    "model alias `{alias}` does not exist or is disabled"
-                )));
-            }
+        let existing_aliases = self
+            .client
+            .query(
+                "SELECT VALUE alias FROM model_catalog
+                 WHERE alias INSIDE $aliases
+                   AND enabled = true;",
+            )
+            .bind(("aliases", aliases.to_vec()))
+            .await?
+            .take::<Vec<String>>(0)?;
+
+        let existing_aliases: std::collections::HashSet<_> = existing_aliases.into_iter().collect();
+        let missing_aliases: Vec<_> = aliases
+            .iter()
+            .filter(|alias| !existing_aliases.contains(alias.as_str()))
+            .cloned()
+            .collect();
+
+        if !missing_aliases.is_empty() {
+            return Err(DatabaseError::InvalidConfig(format!(
+                "model alias(es) do not exist or are disabled: {}",
+                missing_aliases.join(", ")
+            )));
         }
 
         Ok(())
     }
 
     async fn seed_model_catalog(&self) -> Result<(), DatabaseError> {
-        #[derive(Serialize)]
-        struct SeedModel<'a> {
-            alias: &'a str,
-            display_name: &'a str,
-            provider: &'a str,
-            upstream_model: &'a str,
-            description: &'a str,
-            tags: Vec<&'a str>,
+        #[derive(Serialize, SurrealValue)]
+        #[surreal(crate = "surrealdb::types")]
+        struct SeedModel {
+            alias: String,
+            display_name: String,
+            provider: String,
+            upstream_model: String,
+            description: String,
+            tags: Vec<String>,
             enabled: bool,
             context_window_tokens: i64,
             max_output_tokens: i64,
@@ -659,12 +669,12 @@ impl Database {
             (
                 "model_catalog:openai_gpt_4o_mini",
                 SeedModel {
-                    alias: "gpt-4o-mini",
-                    display_name: "GPT-4o Mini",
-                    provider: "openai",
-                    upstream_model: "gpt-4o-mini",
-                    description: "Fast low-cost OpenAI chat model.",
-                    tags: vec!["chat", "fast"],
+                    alias: "gpt-4o-mini".to_string(),
+                    display_name: "GPT-4o Mini".to_string(),
+                    provider: "openai".to_string(),
+                    upstream_model: "gpt-4o-mini".to_string(),
+                    description: "Fast low-cost OpenAI chat model.".to_string(),
+                    tags: vec!["chat".to_string(), "fast".to_string()],
                     enabled: true,
                     context_window_tokens: 128_000,
                     max_output_tokens: 16_384,
@@ -686,12 +696,12 @@ impl Database {
             (
                 "model_catalog:openai_gpt_4o",
                 SeedModel {
-                    alias: "gpt-4o",
-                    display_name: "GPT-4o",
-                    provider: "openai",
-                    upstream_model: "gpt-4o",
-                    description: "General-purpose OpenAI flagship model.",
-                    tags: vec!["chat", "flagship"],
+                    alias: "gpt-4o".to_string(),
+                    display_name: "GPT-4o".to_string(),
+                    provider: "openai".to_string(),
+                    upstream_model: "gpt-4o".to_string(),
+                    description: "General-purpose OpenAI flagship model.".to_string(),
+                    tags: vec!["chat".to_string(), "flagship".to_string()],
                     enabled: true,
                     context_window_tokens: 128_000,
                     max_output_tokens: 16_384,
@@ -713,12 +723,12 @@ impl Database {
             (
                 "model_catalog:anthropic_claude_3_7_sonnet",
                 SeedModel {
-                    alias: "claude-3-7-sonnet",
-                    display_name: "Claude 3.7 Sonnet",
-                    provider: "anthropic",
-                    upstream_model: "claude-3-7-sonnet-latest",
-                    description: "Anthropic reasoning-capable chat model.",
-                    tags: vec!["chat", "thinking"],
+                    alias: "claude-3-7-sonnet".to_string(),
+                    display_name: "Claude 3.7 Sonnet".to_string(),
+                    provider: "anthropic".to_string(),
+                    upstream_model: "claude-3-7-sonnet-latest".to_string(),
+                    description: "Anthropic reasoning-capable chat model.".to_string(),
+                    tags: vec!["chat".to_string(), "thinking".to_string()],
                     enabled: true,
                     context_window_tokens: 200_000,
                     max_output_tokens: 8_192,
@@ -741,7 +751,7 @@ impl Database {
 
         for (record_id, record) in seeds {
             self.client
-                .query("UPSERT type::thing('model_catalog', $id) CONTENT $record;")
+                .query("UPSERT type::record('model_catalog', $id) CONTENT $record;")
                 .bind((
                     "id",
                     record_id
@@ -775,7 +785,7 @@ impl Database {
     }
 }
 
-fn parse_thing(value: &str) -> Result<Thing, DatabaseError> {
-    surrealdb::sql::thing(value)
+fn parse_thing(value: &str) -> Result<RecordId, DatabaseError> {
+    RecordId::parse_simple(value)
         .map_err(|_| DatabaseError::InvalidConfig(format!("invalid record id: {value}")))
 }

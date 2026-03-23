@@ -19,6 +19,7 @@ envy.workspace = true
 reqwest.workspace = true
 valygate-core.workspace = true
 valygate-surrealdb.workspace = true
+surrealdb-types.workspace = true
 uuid.workspace = true
 async-stream.workspace = true
 bytes.workspace = true
@@ -56,6 +57,7 @@ hex = "0.4.3"
 rand = "0.10.0"
 sha2 = "0.10.9"
 surrealdb = "3.0.4"
+surrealdb-types = "3.0.4"
 valygate-surrealdb = { path = "crates/surrealdb" }
 uuid = { version = "1.22.0", features = ["v4", "serde"] }
 async-stream = "0.3.6"
