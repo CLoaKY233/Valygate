@@ -11,6 +11,9 @@ use valygate_surrealdb::ResolvedProxyRoute;
 
 pub struct AnthropicAdapter;
 
+const ANTHROPIC_RESERVED_PROVIDER_KEYS: &[&str] = &["model", "messages", "max_tokens", "stream"];
+const ANTHROPIC_ALLOWED_PROVIDER_KEYS: &[&str] = &["metadata", "stop_sequences", "thinking"];
+
 impl ProviderAdapter for AnthropicAdapter {
     fn name(&self) -> &'static str {
         "anthropic"
@@ -22,9 +25,10 @@ impl ProviderAdapter for AnthropicAdapter {
 
     fn validate_request(
         &self,
-        _request: &CanonicalChatRequest,
+        request: &CanonicalChatRequest,
         _route: &ResolvedProxyRoute,
     ) -> Result<()> {
+        validate_provider_options(request.provider_options_for(self.name()))?;
         Ok(())
     }
 
@@ -85,12 +89,8 @@ impl ProviderAdapter for AnthropicAdapter {
             body["temperature"] = json!(temperature);
         }
 
-        if let Some(provider_options) = request.provider_options_for(self.name())
-            && let Some(body_object) = body.as_object_mut()
-        {
-            for (key, value) in provider_options {
-                body_object.insert(key.clone(), value.clone());
-            }
+        if let Some(body_object) = body.as_object_mut() {
+            merge_provider_options(body_object, request.provider_options_for(self.name()))?;
         }
 
         Ok(body)
@@ -138,7 +138,7 @@ impl ProviderAdapter for AnthropicAdapter {
                     "role": "assistant",
                     "content": content,
                 },
-                "finish_reason": body.get("stop_reason").cloned().unwrap_or_else(|| json!("stop")),
+                "finish_reason": map_finish_reason(body.get("stop_reason")),
             }],
             "usage": {
                 "prompt_tokens": input_tokens,
@@ -330,7 +330,7 @@ impl AnthropicStreamState {
                     .get("delta")
                     .and_then(|delta| delta.get("stop_reason"))
                     .and_then(Value::as_str)
-                    .map(map_finish_reason);
+                    .map(map_finish_reason_string);
             }
             "message_stop" => {
                 chunks.extend(self.finish());
@@ -393,7 +393,59 @@ impl AnthropicStreamState {
     }
 }
 
-fn map_finish_reason(value: &str) -> String {
+fn validate_provider_options(
+    provider_options: Option<&serde_json::Map<String, Value>>,
+) -> Result<()> {
+    let Some(provider_options) = provider_options else {
+        return Ok(());
+    };
+
+    for (key, value) in provider_options {
+        if ANTHROPIC_RESERVED_PROVIDER_KEYS.contains(&key.as_str()) {
+            bail!("providerOptions.anthropic cannot override `{key}`");
+        }
+
+        if !ANTHROPIC_ALLOWED_PROVIDER_KEYS.contains(&key.as_str()) {
+            bail!("unsupported anthropic provider option `{key}`");
+        }
+
+        if key != "stop_sequences" && value.is_array() {
+            bail!("unsupported anthropic provider option `{key}`");
+        }
+
+        if !matches!(key.as_str(), "metadata" | "thinking") && value.is_object() {
+            bail!("unsupported nested anthropic provider option `{key}`");
+        }
+    }
+
+    Ok(())
+}
+
+fn merge_provider_options(
+    body: &mut serde_json::Map<String, Value>,
+    provider_options: Option<&serde_json::Map<String, Value>>,
+) -> Result<()> {
+    validate_provider_options(provider_options)?;
+
+    if let Some(provider_options) = provider_options {
+        for (key, value) in provider_options {
+            if ANTHROPIC_ALLOWED_PROVIDER_KEYS.contains(&key.as_str()) {
+                body.insert(key.clone(), value.clone());
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn map_finish_reason(value: Option<&Value>) -> Value {
+    Value::String(match value.and_then(Value::as_str) {
+        Some(stop_reason) => map_finish_reason_string(stop_reason),
+        None => "stop".to_string(),
+    })
+}
+
+fn map_finish_reason_string(value: &str) -> String {
     match value {
         "end_turn" => "stop".to_string(),
         "max_tokens" => "length".to_string(),

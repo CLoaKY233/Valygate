@@ -42,7 +42,11 @@ pub fn validate_schema_files() -> Result<(), DatabaseError> {
             )));
         }
 
-        if !schema_file.contents.contains("IF NOT EXISTS") {
+        if !schema_file
+            .contents
+            .to_ascii_lowercase()
+            .contains("if not exists")
+        {
             return Err(DatabaseError::SchemaBootstrap(format!(
                 "schema file {} must use IF NOT EXISTS",
                 schema_file.path

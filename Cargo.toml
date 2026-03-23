@@ -23,6 +23,7 @@ uuid.workspace = true
 async-stream.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
+pbkdf2.workspace = true
 
 
 [workspace]
@@ -52,14 +53,15 @@ thiserror = "2.0.18"
 aes-gcm = "0.10.3"
 base64 = "0.22.1"
 hex = "0.4.3"
-rand = "0.8.5"
+rand = "0.10.0"
 sha2 = "0.10.9"
-surrealdb = "2.4.1"
+surrealdb = "3.0.4"
 valygate-surrealdb = { path = "crates/surrealdb" }
-uuid = { version = "1.18.1", features = ["v4", "serde"] }
+uuid = { version = "1.22.0", features = ["v4", "serde"] }
 async-stream = "0.3.6"
-bytes = "1.10.1"
-futures-util = "0.3.31"
+bytes = "1.11.1"
+futures-util = "0.3.32"
+pbkdf2 = "0.12.2"
 
 
 [profile.release]

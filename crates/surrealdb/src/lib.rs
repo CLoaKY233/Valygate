@@ -1,3 +1,12 @@
+//! SurrealDB facade for ValyGate.
+//!
+//! This crate currently keeps one long-lived root client for bootstrap, catalog reads, and
+//! request logging. User-scoped operations still create per-request authenticated clients so
+//! record-access permissions are enforced correctly. That avoids accidental auth-state sharing,
+//! but it also adds connection setup overhead on user-heavy paths. If authenticated control-plane
+//! traffic becomes a throughput bottleneck, this is the point to introduce a token-keyed client
+//! pool or another session-reuse strategy.
+
 mod config;
 mod crypto;
 mod error;
@@ -31,11 +40,13 @@ use schema::{SCHEMA_FILES, validate_schema_files};
 pub struct Database {
     client: Surreal<any::Any>,
     config: DatabaseConfig,
+    encryption_key: [u8; 32],
 }
 
 impl Database {
     pub async fn connect(config: DatabaseConfig) -> Result<Self, DatabaseError> {
         config.validate()?;
+        let encryption_key = config.encryption_key_bytes()?;
 
         let client = any::connect(&config.surreal_url).await?;
         client
@@ -49,7 +60,11 @@ impl Database {
             })
             .await?;
 
-        Ok(Self { client, config })
+        Ok(Self {
+            client,
+            config,
+            encryption_key,
+        })
     }
 
     pub async fn bootstrap(&self) -> Result<(), DatabaseError> {
@@ -190,8 +205,7 @@ impl Database {
         input: CreateProviderCredentialInput,
     ) -> Result<ProviderCredential, DatabaseError> {
         let client = self.fresh_client_with_token(token).await?;
-        let encrypted_api_key =
-            encrypt_secret(&self.config.surreal_encryption_key, &input.api_key)?;
+        let encrypted_api_key = encrypt_secret(&self.encryption_key, &input.api_key)?;
 
         let record = client
             .query(
@@ -226,40 +240,31 @@ impl Database {
         let client = self.fresh_client_with_token(token).await?;
         let provider_id = parse_thing(provider_id)?;
         let encrypted_api_key = match input.api_key {
-            Some(api_key) => Some(encrypt_secret(
-                &self.config.surreal_encryption_key,
-                &api_key,
-            )?),
+            Some(api_key) => Some(encrypt_secret(&self.encryption_key, &api_key)?),
             None => None,
         };
 
         client
             .query(
-                "UPDATE $provider_id MERGE {
+                "LET $update = {
                     label: $label,
                     tags: $tags,
                     enabled: $enabled,
                     updated_at: time::now()
-                };",
+                };
+                UPDATE $provider_id MERGE
+                    IF $encrypted_api_key = NONE {
+                        $update
+                    } ELSE {
+                        $update.merge({ encrypted_api_key: $encrypted_api_key })
+                    };",
             )
             .bind(("provider_id", provider_id.clone()))
             .bind(("label", input.label))
             .bind(("tags", input.tags))
             .bind(("enabled", input.enabled))
+            .bind(("encrypted_api_key", encrypted_api_key))
             .await?;
-
-        if let Some(encrypted_api_key) = encrypted_api_key {
-            client
-                .query(
-                    "UPDATE $provider_id MERGE {
-                        encrypted_api_key: $encrypted_api_key,
-                        updated_at: time::now()
-                    };",
-                )
-                .bind(("provider_id", provider_id.clone()))
-                .bind(("encrypted_api_key", encrypted_api_key))
-                .await?;
-        }
 
         self.get_provider_credential(token, &provider_id.to_string())
             .await
@@ -494,6 +499,12 @@ impl Database {
                 DatabaseError::InvalidConfig("user for virtual key was not found".into())
             })?;
 
+        if !user.enabled {
+            return Err(DatabaseError::InvalidConfig(
+                "user for virtual key is disabled".into(),
+            ));
+        }
+
         let model = self
             .client
             .query(
@@ -590,7 +601,7 @@ impl Database {
         &self,
         encrypted_api_key: &str,
     ) -> Result<String, DatabaseError> {
-        decrypt_secret(&self.config.surreal_encryption_key, encrypted_api_key)
+        decrypt_secret(&self.encryption_key, encrypted_api_key)
     }
 
     async fn ensure_model_aliases_exist(&self, aliases: &[String]) -> Result<(), DatabaseError> {

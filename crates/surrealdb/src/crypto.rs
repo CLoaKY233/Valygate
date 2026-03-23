@@ -11,7 +11,10 @@ use crate::DatabaseError;
 const NONCE_SIZE: usize = 12;
 const VIRTUAL_API_KEY_BYTES: usize = 32;
 
-pub fn encrypt_secret(key_material: &str, plaintext: &str) -> Result<String, DatabaseError> {
+pub fn encrypt_secret(
+    key_material: &[u8; VIRTUAL_API_KEY_BYTES],
+    plaintext: &str,
+) -> Result<String, DatabaseError> {
     let cipher = build_cipher(key_material);
     let mut nonce_bytes = [0_u8; NONCE_SIZE];
     OsRng.fill_bytes(&mut nonce_bytes);
@@ -27,7 +30,10 @@ pub fn encrypt_secret(key_material: &str, plaintext: &str) -> Result<String, Dat
     Ok(STANDARD.encode(payload))
 }
 
-pub fn decrypt_secret(key_material: &str, encoded_payload: &str) -> Result<String, DatabaseError> {
+pub fn decrypt_secret(
+    key_material: &[u8; VIRTUAL_API_KEY_BYTES],
+    encoded_payload: &str,
+) -> Result<String, DatabaseError> {
     let cipher = build_cipher(key_material);
     let payload = STANDARD
         .decode(encoded_payload)
@@ -62,19 +68,21 @@ pub fn key_prefix(raw_key: &str) -> String {
     raw_key.chars().take(12).collect()
 }
 
-fn build_cipher(key_material: &str) -> Aes256Gcm {
-    let key_bytes = Sha256::digest(key_material.as_bytes());
-    Aes256Gcm::new_from_slice(&key_bytes).expect("sha256 output is always 32 bytes")
+fn build_cipher(key_material: &[u8; VIRTUAL_API_KEY_BYTES]) -> Aes256Gcm {
+    Aes256Gcm::new_from_slice(key_material).expect("validated encryption key is always 32 bytes")
 }
 
 #[cfg(test)]
 mod tests {
     use super::{decrypt_secret, encrypt_secret, generate_virtual_api_key, hash_virtual_api_key};
+    use pbkdf2::pbkdf2_hmac_array;
+    use sha2::Sha256;
 
     #[test]
     fn provider_secret_round_trip() {
-        let encrypted = encrypt_secret("test-key", "super-secret").expect("encryption must work");
-        let decrypted = decrypt_secret("test-key", &encrypted).expect("decryption must work");
+        let key = pbkdf2_hmac_array::<Sha256, 32>(b"test-key", b"0123456789abcdef", 1_000);
+        let encrypted = encrypt_secret(&key, "super-secret").expect("encryption must work");
+        let decrypted = decrypt_secret(&key, &encrypted).expect("decryption must work");
 
         assert_eq!(decrypted, "super-secret");
     }

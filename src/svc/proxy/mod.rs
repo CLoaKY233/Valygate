@@ -11,6 +11,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::Value;
+use tracing::{info, warn};
 use valygate_core::error::AppError;
 use valygate_surrealdb::{RequestLogInput, ResolvedProxyRoute};
 
@@ -47,7 +48,8 @@ impl ProxyExecutor {
             .await
             .map_err(internal_error)?;
 
-        validate_model_capabilities(&canonical_request, &route)
+        let mut canonical_request = canonical_request;
+        canonical_request.temperature = validate_model_capabilities(&canonical_request, &route)
             .map_err(|error| AppError::BadRequest(error.to_string()))?;
 
         let provider_api_key = state
@@ -82,9 +84,9 @@ impl ProxyExecutor {
                 let stream_body = adapter
                     .translate_stream_response(upstream, &canonical_request, &route, &request_id)
                     .map_err(internal_error)?;
-                let _ = state
-                    .database
-                    .log_request(build_request_log(RequestLogDraft {
+                persist_request_log_or_warn(
+                    state.clone(),
+                    build_request_log(RequestLogDraft {
                         request_id: &request_id,
                         route: &route,
                         status_code,
@@ -96,8 +98,9 @@ impl ProxyExecutor {
                             prompt_tokens: None,
                             completion_tokens: None,
                         },
-                    }))
-                    .await;
+                    }),
+                )
+                .await;
 
                 return Ok((
                     StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::OK),
@@ -120,9 +123,9 @@ impl ProxyExecutor {
         let usage = adapter.extract_usage(&body);
         let translated = adapter.translate_json_response(&body, &canonical_request, &route);
 
-        let _ = state
-            .database
-            .log_request(build_request_log(RequestLogDraft {
+        persist_request_log_or_warn(
+            state.clone(),
+            build_request_log(RequestLogDraft {
                 request_id: &request_id,
                 route: &route,
                 status_code,
@@ -135,8 +138,9 @@ impl ProxyExecutor {
                     None
                 },
                 usage,
-            }))
-            .await;
+            }),
+        )
+        .await;
 
         Ok((
             StatusCode::from_u16(status_code as u16).unwrap_or(StatusCode::OK),
@@ -149,7 +153,7 @@ impl ProxyExecutor {
 fn validate_model_capabilities(
     request: &CanonicalChatRequest,
     route: &ResolvedProxyRoute,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Option<f64>> {
     if request.stream && !route.model.supports_streaming {
         anyhow::bail!("model does not support streaming");
     }
@@ -158,10 +162,29 @@ fn validate_model_capabilities(
         anyhow::bail!("model does not support temperature");
     }
 
-    if let Some(fixed) = route.model.temperature_fixed_to
-        && request.temperature.unwrap_or(fixed) != fixed
-    {
-        anyhow::bail!("temperature must be {fixed} for this model");
+    let enforced_temperature = if let Some(fixed) = route.model.temperature_fixed_to {
+        match request.temperature {
+            Some(requested) if requested != fixed => {
+                anyhow::bail!("temperature must be {fixed} for this model");
+            }
+            _ => Some(fixed),
+        }
+    } else {
+        request.temperature
+    };
+
+    if let Some(temperature) = enforced_temperature {
+        if let Some(minimum) = route.model.temperature_min
+            && temperature < minimum
+        {
+            anyhow::bail!("temperature must be at least {minimum} for this model");
+        }
+
+        if let Some(maximum) = route.model.temperature_max
+            && temperature > maximum
+        {
+            anyhow::bail!("temperature must be at most {maximum} for this model");
+        }
     }
 
     if request.top_p.is_some() && !route.model.supports_top_p {
@@ -172,7 +195,7 @@ fn validate_model_capabilities(
         anyhow::bail!("model does not support tools");
     }
 
-    Ok(())
+    Ok(enforced_temperature)
 }
 
 fn build_request_log(draft: RequestLogDraft<'_>) -> RequestLogInput {
@@ -266,4 +289,22 @@ pub(crate) fn openai_stream_headers() -> HeaderMap {
 
 fn internal_error(error: impl std::fmt::Display) -> AppError {
     AppError::Internal(anyhow::anyhow!(error.to_string()))
+}
+
+async fn persist_request_log_or_warn(state: Arc<AppState>, log: RequestLogInput) {
+    let request_id = log.request_id.clone();
+    let model_alias = log.model_alias.clone();
+    let status_code = log.status_code;
+
+    if let Err(error) = state.database.log_request(log).await {
+        warn!(
+            %request_id,
+            %model_alias,
+            status_code,
+            error = %error,
+            "failed to persist request log",
+        );
+    } else {
+        info!(%request_id, %model_alias, status_code, "persisted request log");
+    }
 }

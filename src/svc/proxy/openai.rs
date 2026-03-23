@@ -1,6 +1,6 @@
 use anyhow::{Result, bail};
 use axum::{body::Body, http::HeaderMap};
-use serde_json::Value;
+use serde_json::{Value, json};
 
 use super::{CanonicalChatRequest, ProviderAdapter, UsageSummary, openai_stream_headers};
 use valygate_surrealdb::ResolvedProxyRoute;
@@ -37,13 +37,56 @@ impl ProviderAdapter for OpenAiAdapter {
         request: &CanonicalChatRequest,
         route: &ResolvedProxyRoute,
     ) -> Result<Value> {
-        let mut payload = request.raw_body.clone();
+        let mut payload = json!({
+            "model": route.model.upstream_model,
+            "messages": request.messages,
+            "stream": request.stream,
+        });
+
         if let Some(body) = payload.as_object_mut() {
-            body.remove("providerOptions");
-            body.insert(
-                "model".into(),
-                Value::String(route.model.upstream_model.clone()),
+            insert_optional(
+                body,
+                "temperature",
+                request.temperature.map(|value| json!(value)),
             );
+            insert_optional(body, "top_p", request.top_p.map(|value| json!(value)));
+            insert_optional(
+                body,
+                "max_tokens",
+                request.max_tokens.map(|value| json!(value)),
+            );
+            insert_optional(
+                body,
+                "max_completion_tokens",
+                request.max_completion_tokens.map(|value| json!(value)),
+            );
+            insert_optional(body, "stop", request.stop.clone());
+            insert_optional(
+                body,
+                "presence_penalty",
+                request.presence_penalty.map(|value| json!(value)),
+            );
+            insert_optional(
+                body,
+                "frequency_penalty",
+                request.frequency_penalty.map(|value| json!(value)),
+            );
+            insert_optional(body, "n", request.n.map(|value| json!(value)));
+            insert_optional(body, "tools", request.tools.clone());
+            insert_optional(body, "response_format", request.response_format.clone());
+
+            for passthrough_key in [
+                "tool_choice",
+                "parallel_tool_calls",
+                "user",
+                "metadata",
+                "reasoning_effort",
+                "modalities",
+            ] {
+                if let Some(value) = request.raw_body.get(passthrough_key).cloned() {
+                    body.insert(passthrough_key.to_string(), value);
+                }
+            }
 
             if let Some(provider_options) = request.provider_options_for(self.name()) {
                 for (key, value) in provider_options {
@@ -51,6 +94,7 @@ impl ProviderAdapter for OpenAiAdapter {
                 }
             }
         }
+
         Ok(payload)
     }
 
@@ -106,5 +150,11 @@ impl ProviderAdapter for OpenAiAdapter {
 
     fn stream_headers(&self) -> Option<HeaderMap> {
         Some(openai_stream_headers())
+    }
+}
+
+fn insert_optional(body: &mut serde_json::Map<String, Value>, key: &str, value: Option<Value>) {
+    if let Some(value) = value {
+        body.insert(key.to_string(), value);
     }
 }

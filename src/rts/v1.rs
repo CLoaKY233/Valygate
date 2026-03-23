@@ -9,6 +9,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use valygate_core::error::AppError;
 use valygate_surrealdb::{
@@ -158,82 +159,105 @@ struct UpdateVirtualKeyRequest {
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[tracing::instrument(skip(state, input))]
 async fn signup(
     State(state): State<Arc<AppState>>,
     Json(input): Json<SignupInput>,
 ) -> Result<Json<AuthResponse>, AppError> {
-    let session = state
-        .database
-        .signup_user(input)
-        .await
-        .map_err(internal_error)?;
+    debug!("signup request received");
+    let session = state.database.signup_user(input).await.map_err(|error| {
+        error!(error = %error, "signup failed");
+        internal_error(error)
+    })?;
     Ok(Json(AuthResponse {
         user: map_user(&session.user),
         token: session.token,
     }))
 }
 
+#[tracing::instrument(skip(state, input))]
 async fn signin(
     State(state): State<Arc<AppState>>,
     Json(input): Json<SigninInput>,
 ) -> Result<Json<AuthResponse>, AppError> {
-    let session = state
-        .database
-        .signin_user(input)
-        .await
-        .map_err(internal_error)?;
+    debug!("signin request received");
+    let session = state.database.signin_user(input).await.map_err(|error| {
+        error!(error = %error, "signin failed");
+        internal_error(error)
+    })?;
     Ok(Json(AuthResponse {
         user: map_user(&session.user),
         token: session.token,
     }))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn me(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<UserResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), "me request received");
     let user = state
         .database
         .authenticate_user(token)
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), "me failed");
+            internal_error(error)
+        })?;
     Ok(Json(map_user(&user)))
 }
 
+#[tracing::instrument(skip(state, headers, input))]
 async fn update_me(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(input): Json<UpdateProfileInput>,
 ) -> Result<Json<UserResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), "update_me request received");
     let user = state
         .database
         .update_profile(token, input)
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), "update_me failed");
+            internal_error(error)
+        })?;
     Ok(Json(map_user(&user)))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn list_providers(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ProviderResponse>>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), "list_providers request received");
     let providers = state
         .database
         .list_provider_credentials(token)
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), "list_providers failed");
+            internal_error(error)
+        })?;
     Ok(Json(providers.iter().map(map_provider).collect()))
 }
 
+#[tracing::instrument(skip(state, headers, input))]
 async fn create_provider(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(input): Json<CreateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(
+        token_fingerprint = %token_fingerprint(token),
+        provider = %input.provider.as_str(),
+        "create_provider request received"
+    );
     let provider = state
         .database
         .create_provider_credential(
@@ -246,25 +270,47 @@ async fn create_provider(
             },
         )
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                "create_provider failed"
+            );
+            internal_error(error)
+        })?;
     Ok(Json(map_provider(&provider)))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn get_provider(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(provider_id): Path<String>,
 ) -> Result<Json<ProviderResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(
+        token_fingerprint = %token_fingerprint(token),
+        provider_id = %provider_id,
+        "get_provider request received"
+    );
     let provider = state
         .database
         .get_provider_credential(token, &provider_id)
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                provider_id = %provider_id,
+                "get_provider failed"
+            );
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
+#[tracing::instrument(skip(state, headers, input))]
 async fn update_provider(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -272,6 +318,11 @@ async fn update_provider(
     Json(input): Json<UpdateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(
+        token_fingerprint = %token_fingerprint(token),
+        provider_id = %provider_id,
+        "update_provider request received"
+    );
     let provider = state
         .database
         .update_provider_credential(
@@ -285,45 +336,74 @@ async fn update_provider(
             },
         )
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                provider_id = %provider_id,
+                "update_provider failed"
+            );
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn delete_provider(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(provider_id): Path<String>,
 ) -> Result<Json<ProviderResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(
+        token_fingerprint = %token_fingerprint(token),
+        provider_id = %provider_id,
+        "delete_provider request received"
+    );
     let provider = state
         .database
         .delete_provider_credential(token, &provider_id)
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                provider_id = %provider_id,
+                "delete_provider failed"
+            );
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn list_virtual_keys(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<VirtualKeyResponse>>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), "list_virtual_keys request received");
     let keys = state
         .database
         .list_virtual_api_keys(token)
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), "list_virtual_keys failed");
+            internal_error(error)
+        })?;
     Ok(Json(keys.iter().map(map_virtual_key).collect()))
 }
 
+#[tracing::instrument(skip(state, headers, input))]
 async fn create_virtual_key(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Json(input): Json<CreateVirtualKeyRequest>,
 ) -> Result<Json<CreateVirtualKeyResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), "create_virtual_key request received");
     let created = state
         .database
         .create_virtual_api_key(
@@ -336,28 +416,37 @@ async fn create_virtual_key(
             },
         )
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), "create_virtual_key failed");
+            internal_error(error)
+        })?;
     Ok(Json(CreateVirtualKeyResponse {
         key: map_virtual_key(&created.record),
         raw_key: created.raw_key,
     }))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn get_virtual_key(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(key_id): Path<String>,
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "get_virtual_key request received");
     let key = state
         .database
         .get_virtual_api_key(token, &key_id)
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "get_virtual_key failed");
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
 
+#[tracing::instrument(skip(state, headers, input))]
 async fn update_virtual_key(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -365,6 +454,7 @@ async fn update_virtual_key(
     Json(input): Json<UpdateVirtualKeyRequest>,
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key request received");
     let key = state
         .database
         .update_virtual_api_key(
@@ -379,54 +469,73 @@ async fn update_virtual_key(
             },
         )
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key failed");
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn delete_virtual_key(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(key_id): Path<String>,
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "delete_virtual_key request received");
     let key = state
         .database
         .delete_virtual_api_key(token, &key_id)
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "delete_virtual_key failed");
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn list_models(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<ModelResponse>>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), "list_models request received");
     let models = state
         .database
         .list_usable_models(token)
         .await
-        .map_err(internal_error)?;
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), "list_models failed");
+            internal_error(error)
+        })?;
     Ok(Json(models.iter().map(map_model).collect()))
 }
 
+#[tracing::instrument(skip(state, headers))]
 async fn get_model(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(alias): Path<String>,
 ) -> Result<Json<ModelResponse>, AppError> {
     let token = extract_bearer(&headers)?;
+    debug!(token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model request received");
     let model = state
         .database
         .get_model_by_alias_for_user(token, &alias)
         .await
-        .map_err(internal_error)?
+        .map_err(|error| {
+            error!(error = %error, token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model failed");
+            internal_error(error)
+        })?
         .ok_or_else(|| AppError::BadRequest("Model not found".into()))?;
     Ok(Json(map_model(&model)))
 }
 
+#[tracing::instrument(skip(state, headers, payload))]
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
@@ -435,27 +544,62 @@ async fn chat_completions(
     let started_at = Instant::now();
     let request_id = Uuid::new_v4().to_string();
     let raw_key = extract_bearer(&headers)?;
+    info!(
+        %request_id,
+        token_fingerprint = %token_fingerprint(raw_key),
+        "chat_completions request received"
+    );
     payload
         .get("model")
         .and_then(Value::as_str)
         .ok_or_else(|| AppError::BadRequest("`model` is required".into()))?;
-    proxy::ProxyExecutor::execute_chat_completion(state, raw_key, payload, request_id, started_at)
-        .await
+    let response = proxy::ProxyExecutor::execute_chat_completion(
+        state,
+        raw_key,
+        payload,
+        request_id.clone(),
+        started_at,
+    )
+    .await;
+    match &response {
+        Ok(_) => info!(
+            %request_id,
+            duration_ms = started_at.elapsed().as_millis(),
+            "chat_completions completed"
+        ),
+        Err(error) => error!(
+            %request_id,
+            duration_ms = started_at.elapsed().as_millis(),
+            error = %error,
+            "chat_completions failed"
+        ),
+    }
+    response
 }
 
 fn extract_bearer(headers: &HeaderMap) -> Result<&str, AppError> {
     let header = headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .ok_or_else(|| AppError::Unauthorized("Missing Authorization header".into()))?;
+        .ok_or_else(|| {
+            warn!("missing authorization header");
+            AppError::Unauthorized("Missing Authorization header".into())
+        })?;
 
-    header
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| AppError::Unauthorized("Authorization header must use Bearer auth".into()))
+    header.strip_prefix("Bearer ").ok_or_else(|| {
+        warn!("authorization header is not bearer");
+        AppError::Unauthorized("Authorization header must use Bearer auth".into())
+    })
 }
 
 fn internal_error(error: impl std::fmt::Display) -> AppError {
+    error!(error = %error, "internal handler error");
     AppError::Internal(anyhow::anyhow!(error.to_string()))
+}
+
+fn token_fingerprint(token: &str) -> String {
+    let prefix: String = token.chars().take(8).collect();
+    format!("{prefix}..{}", token.len())
 }
 
 fn map_user(user: &User) -> UserResponse {
