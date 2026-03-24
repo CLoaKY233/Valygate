@@ -70,13 +70,15 @@ impl ProxyExecutor {
             .map_err(|error| AppError::BadRequest(error.to_string()))?;
         let builder = adapter
             .apply_headers(
-                state.http_client.post(adapter.target_url()),
+                reqwest::Client::new().post(adapter.target_url()),
                 &provider_api_key,
                 &request_id,
             )
             .json(&outbound_payload);
-        let upstream = builder
-            .send()
+        let request = builder.build().map_err(|e| AppError::Internal(e.into()))?;
+        let upstream = state
+            .http_client
+            .execute(request)
             .await
             .map_err(|error| AppError::Internal(error.into()))?;
 

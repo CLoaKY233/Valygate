@@ -16,7 +16,7 @@ anyhow.workspace = true
 dotenvy.workspace = true
 telemetry.workspace = true
 envy.workspace = true
-reqwest.workspace = true
+reqwest = { workspace = true, features = ["json"] }
 valygate-core.workspace = true
 valygate-surrealdb.workspace = true
 surrealdb-types.workspace = true
@@ -24,6 +24,8 @@ uuid.workspace = true
 async-stream.workspace = true
 bytes.workspace = true
 futures-util.workspace = true
+dashmap = "6.1.0"
+async-trait = "0.1.89"
 
 
 [workspace]

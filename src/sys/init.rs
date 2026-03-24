@@ -55,7 +55,7 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
 
     let state = Arc::new(AppState {
         config,
-        http_client,
+        http_client: std::sync::Arc::new(http_client),
         database,
     });
 

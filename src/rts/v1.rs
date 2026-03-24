@@ -19,7 +19,7 @@ use valygate_surrealdb::{
     UpdateVirtualApiKeyInput, User, VirtualApiKey,
 };
 
-use crate::{svc::proxy, sys::state::AppState};
+use crate::{rts::extractors::RequireAuth, svc::proxy, sys::state::AppState};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -193,12 +193,12 @@ async fn signin(
     }))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn me(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
 ) -> Result<Json<UserResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "me request received");
     let user = state
         .database
@@ -211,13 +211,13 @@ async fn me(
     Ok(Json(map_user(&user)))
 }
 
-#[tracing::instrument(skip(state, headers, input))]
+#[tracing::instrument(skip(state, auth, input))]
 async fn update_me(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Json(input): Json<UpdateProfileInput>,
 ) -> Result<Json<UserResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "update_me request received");
     let user = state
         .database
@@ -230,12 +230,12 @@ async fn update_me(
     Ok(Json(map_user(&user)))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn list_providers(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
 ) -> Result<Json<Vec<ProviderResponse>>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "list_providers request received");
     let providers = state
         .database
@@ -248,13 +248,13 @@ async fn list_providers(
     Ok(Json(providers.iter().map(map_provider).collect()))
 }
 
-#[tracing::instrument(skip(state, headers, input))]
+#[tracing::instrument(skip(state, auth, input))]
 async fn create_provider(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Json(input): Json<CreateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(
         token_fingerprint = %token_fingerprint(token),
         provider = %input.provider.as_str(),
@@ -283,13 +283,13 @@ async fn create_provider(
     Ok(Json(map_provider(&provider)))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn get_provider(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(provider_id): Path<String>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(
         token_fingerprint = %token_fingerprint(token),
         provider_id = %provider_id,
@@ -312,14 +312,14 @@ async fn get_provider(
     Ok(Json(map_provider(&provider)))
 }
 
-#[tracing::instrument(skip(state, headers, input))]
+#[tracing::instrument(skip(state, auth, input))]
 async fn update_provider(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(provider_id): Path<String>,
     Json(input): Json<UpdateProviderRequest>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(
         token_fingerprint = %token_fingerprint(token),
         provider_id = %provider_id,
@@ -351,13 +351,13 @@ async fn update_provider(
     Ok(Json(map_provider(&provider)))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn delete_provider(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(provider_id): Path<String>,
 ) -> Result<Json<ProviderResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(
         token_fingerprint = %token_fingerprint(token),
         provider_id = %provider_id,
@@ -380,12 +380,12 @@ async fn delete_provider(
     Ok(Json(map_provider(&provider)))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn list_virtual_keys(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
 ) -> Result<Json<Vec<VirtualKeyResponse>>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "list_virtual_keys request received");
     let keys = state
         .database
@@ -398,13 +398,13 @@ async fn list_virtual_keys(
     Ok(Json(keys.iter().map(map_virtual_key).collect()))
 }
 
-#[tracing::instrument(skip(state, headers, input))]
+#[tracing::instrument(skip(state, auth, input))]
 async fn create_virtual_key(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Json(input): Json<CreateVirtualKeyRequest>,
 ) -> Result<Json<CreateVirtualKeyResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "create_virtual_key request received");
     let created = state
         .database
@@ -428,13 +428,13 @@ async fn create_virtual_key(
     }))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn get_virtual_key(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(key_id): Path<String>,
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "get_virtual_key request received");
     let key = state
         .database
@@ -448,14 +448,14 @@ async fn get_virtual_key(
     Ok(Json(map_virtual_key(&key)))
 }
 
-#[tracing::instrument(skip(state, headers, input))]
+#[tracing::instrument(skip(state, auth, input))]
 async fn update_virtual_key(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(key_id): Path<String>,
     Json(input): Json<UpdateVirtualKeyRequest>,
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key request received");
     let key = state
         .database
@@ -479,13 +479,13 @@ async fn update_virtual_key(
     Ok(Json(map_virtual_key(&key)))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn delete_virtual_key(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(key_id): Path<String>,
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "delete_virtual_key request received");
     let key = state
         .database
@@ -499,12 +499,12 @@ async fn delete_virtual_key(
     Ok(Json(map_virtual_key(&key)))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn list_models(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
 ) -> Result<Json<Vec<ModelResponse>>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "list_models request received");
     let models = state
         .database
@@ -517,13 +517,13 @@ async fn list_models(
     Ok(Json(models.iter().map(map_model).collect()))
 }
 
-#[tracing::instrument(skip(state, headers))]
+#[tracing::instrument(skip(state, auth))]
 async fn get_model(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    auth: RequireAuth,
     Path(alias): Path<String>,
 ) -> Result<Json<ModelResponse>, AppError> {
-    let token = extract_bearer(&headers)?;
+    let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model request received");
     let model = state
         .database
@@ -540,7 +540,7 @@ async fn get_model(
 #[tracing::instrument(skip(state, headers, payload))]
 async fn chat_completions(
     State(state): State<Arc<AppState>>,
-    headers: HeaderMap,
+    headers: axum::http::HeaderMap,
     Json(payload): Json<Value>,
 ) -> Result<Response, AppError> {
     let started_at = Instant::now();
