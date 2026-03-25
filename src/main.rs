@@ -2,7 +2,7 @@ use anyhow::Result;
 use axum::routing::get;
 use tower_http::trace::TraceLayer;
 use tracing::info;
-use valygate::{
+use valymux::{
     rts::{root::root_handler, v1},
     sys::init::initialize,
 };
@@ -58,5 +58,5 @@ async fn shutdown_signal() {
         () = ctrl_c => {},
         () = terminate => {},
     }
-    tracing::warn!("Shutdown signal received, starting graceful shutdown of Valygate...");
+    tracing::warn!("Shutdown signal received, starting graceful shutdown of Valymux...");
 }

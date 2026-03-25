@@ -13,8 +13,8 @@ use axum::{
 use serde_json::Value;
 use surrealdb_types::ToSql;
 use tracing::{info, warn};
-use valygate_core::error::AppError;
-use valygate_surrealdb::{RequestLogInput, ResolvedProxyRoute};
+use valymux_core::error::AppError;
+use valymux_surrealdb::{RequestLogInput, ResolvedProxyRoute};
 
 use crate::sys::state::AppState;
 

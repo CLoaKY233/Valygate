@@ -3,7 +3,7 @@ use axum::{body::Body, http::HeaderMap};
 use serde_json::{Value, json};
 
 use super::{CanonicalChatRequest, ProviderAdapter, UsageSummary, openai_stream_headers};
-use valygate_surrealdb::ResolvedProxyRoute;
+use valymux_surrealdb::ResolvedProxyRoute;
 
 pub struct OpenAiAdapter;
 

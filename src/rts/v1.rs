@@ -12,8 +12,8 @@ use serde_json::Value;
 use surrealdb_types::ToSql;
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
-use valygate_core::error::AppError;
-use valygate_surrealdb::{
+use valymux_core::error::AppError;
+use valymux_surrealdb::{
     CreateProviderCredentialInput, CreateVirtualApiKeyInput, ModelCatalogEntry, ProviderCredential,
     ProviderKind, SigninInput, SignupInput, UpdateProfileInput, UpdateProviderCredentialInput,
     UpdateVirtualApiKeyInput, User, VirtualApiKey,

@@ -1,6 +1,6 @@
 use crate::sys::{client::HttpClient, config::AppConfig};
 use std::sync::Arc;
-use valygate_surrealdb::Database;
+use valymux_surrealdb::Database;
 
 #[derive(Clone)]
 pub struct AppState {

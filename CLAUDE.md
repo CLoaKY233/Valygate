@@ -1,6 +1,6 @@
-# ValyGate Project Context
+# ValyMux Project Context
 
-ValyGate is an all-in-one LLM gateway, proxy, prompt manager, and observability platform. It is designed to centralize access to multiple LLM providers, manage prompts, and provide comprehensive tracking and analysis of LLM interactions.
+ValyMux is an all-in-one LLM gateway, proxy, prompt manager, and observability platform. It is designed to centralize access to multiple LLM providers, manage prompts, and provide comprehensive tracking and analysis of LLM interactions.
 
 ## Technical Stack
 - **Language:** Rust (Edition 2024)

@@ -1,7 +1,7 @@
 use axum::{extract::FromRequestParts, http::request::Parts};
 use std::sync::Arc;
-use valygate_core::error::AppError;
-use valygate_surrealdb::User;
+use valymux_core::error::AppError;
+use valymux_surrealdb::User;
 
 use crate::sys::state::AppState;
 

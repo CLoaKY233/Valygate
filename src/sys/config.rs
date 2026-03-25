@@ -1,7 +1,7 @@
 use std::fmt;
 
 use serde::Deserialize;
-use valygate_surrealdb::DatabaseConfig;
+use valymux_surrealdb::DatabaseConfig;
 
 fn default_host() -> String {
     "0.0.0.0".to_string()

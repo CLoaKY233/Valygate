@@ -28,9 +28,9 @@ impl LogConfig {
 
         let filter = env::var("RUST_LOG").unwrap_or_else(|_| {
             if cfg!(debug_assertions) {
-                "valygate=debug,tower_http=debug,info".to_string()
+                "valymux=debug,tower_http=debug,info".to_string()
             } else {
-                "valygate=info,tower_http=info,warn".to_string()
+                "valymux=info,tower_http=info,warn".to_string()
             }
         });
 

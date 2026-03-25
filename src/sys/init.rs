@@ -4,7 +4,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tracing::info;
-use valygate_surrealdb::Database;
+use valymux_surrealdb::Database;
 
 use super::{config::AppConfig, state::AppState};
 

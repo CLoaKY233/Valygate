@@ -1,4 +1,4 @@
-//! `SurrealDB` facade for `ValyGate`.
+//! `SurrealDB` facade for `ValyMux`.
 //!
 //! This crate currently keeps one long-lived root client for bootstrap, catalog reads, and
 //! request logging. User-scoped operations still create per-request authenticated clients so
