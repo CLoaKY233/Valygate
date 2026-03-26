@@ -79,11 +79,6 @@ impl Database {
         Ok(())
     }
 
-    #[must_use]
-    pub fn client(&self) -> &Surreal<any::Any> {
-        &self.client
-    }
-
     pub async fn signup_user(&self, input: SignupInput) -> Result<AuthSession, DatabaseError> {
         #[derive(Serialize, SurrealValue)]
         #[surreal(crate = "surrealdb::types")]
@@ -146,6 +141,10 @@ impl Database {
             .take::<Option<User>>(0)?
             .ok_or_else(|| DatabaseError::SchemaBootstrap("signed in user was not found".into()))?;
 
+        if !user.enabled {
+            return Err(DatabaseError::InvalidConfig("account is disabled".into()));
+        }
+
         Ok(AuthSession {
             user,
             token: token.access.into_insecure_token(),
@@ -154,11 +153,17 @@ impl Database {
 
     pub async fn authenticate_user(&self, token: &str) -> Result<User, DatabaseError> {
         let client = self.fresh_client_with_token(token).await?;
-        client
+        let user = client
             .query("SELECT * FROM $auth.id;")
             .await?
             .take::<Option<User>>(0)?
-            .ok_or_else(|| DatabaseError::InvalidConfig("authenticated user not found".into()))
+            .ok_or_else(|| DatabaseError::InvalidConfig("authenticated user not found".into()))?;
+
+        if !user.enabled {
+            return Err(DatabaseError::InvalidConfig("account is disabled".into()));
+        }
+
+        Ok(user)
     }
 
     pub async fn update_profile(
@@ -515,7 +520,7 @@ impl Database {
             .bind(("alias", requested_model))
             .await?
             .take::<Option<ModelCatalogEntry>>(0)?
-            .ok_or_else(|| DatabaseError::InvalidConfig("requested model was not found".into()))?;
+            .ok_or_else(|| DatabaseError::NotFound("requested model was not found".into()))?;
 
         let provider_credential = self
             .client
@@ -532,7 +537,7 @@ impl Database {
             .await?
             .take::<Option<ProviderCredential>>(0)?
             .ok_or_else(|| {
-                DatabaseError::InvalidConfig(
+                DatabaseError::NotFound(
                     "no enabled provider credential exists for this model".into(),
                 )
             })?;

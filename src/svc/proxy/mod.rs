@@ -14,7 +14,7 @@ use serde_json::Value;
 use surrealdb_types::ToSql;
 use tracing::{info, warn};
 use valymux_core::error::AppError;
-use valymux_surrealdb::{RequestLogInput, ResolvedProxyRoute};
+use valymux_surrealdb::{DatabaseError, RequestLogInput, ResolvedProxyRoute};
 
 use crate::sys::state::AppState;
 
@@ -50,7 +50,10 @@ impl ProxyExecutor {
             .database
             .resolve_proxy_route(raw_key, &canonical_request.model)
             .await
-            .map_err(internal_error)?;
+            .map_err(|e| match e {
+                DatabaseError::NotFound(msg) => AppError::NotFound(msg),
+                other => internal_error(other),
+            })?;
 
         let mut canonical_request = canonical_request;
         canonical_request.temperature = validate_model_capabilities(&canonical_request, &route)
@@ -70,7 +73,7 @@ impl ProxyExecutor {
             .map_err(|error| AppError::BadRequest(error.to_string()))?;
         let builder = adapter
             .apply_headers(
-                reqwest::Client::new().post(adapter.target_url()),
+                state.reqwest_client.post(adapter.target_url()),
                 &provider_api_key,
                 &request_id,
             )

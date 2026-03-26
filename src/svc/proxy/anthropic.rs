@@ -119,9 +119,22 @@ impl ProviderAdapter for AnthropicAdapter {
         let content = body
             .get("content")
             .and_then(Value::as_array)
-            .and_then(|parts| parts.first())
-            .and_then(|part| part.get("text"))
-            .and_then(Value::as_str)
+            .map(|parts| {
+                let text: String = parts
+                    .iter()
+                    .filter_map(|p| p.get("text").and_then(Value::as_str))
+                    .collect::<Vec<_>>()
+                    .join("");
+                if text.is_empty() {
+                    parts
+                        .iter()
+                        .filter_map(|p| p.get("thinking").and_then(Value::as_str))
+                        .collect::<Vec<_>>()
+                        .join("")
+                } else {
+                    text
+                }
+            })
             .unwrap_or_default();
 
         let usage = body.get("usage").cloned().unwrap_or_else(|| json!({}));

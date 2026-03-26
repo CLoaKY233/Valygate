@@ -1,3 +1,5 @@
+use std::fmt;
+
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use surrealdb::types::{RecordId, SurrealValue};
@@ -12,10 +14,19 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct AuthSession {
     pub user: User,
     pub token: String,
+}
+
+impl fmt::Debug for AuthSession {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("AuthSession")
+            .field("user", &self.user)
+            .field("token", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, SurrealValue)]
@@ -36,7 +47,7 @@ impl ProviderKind {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+#[derive(Clone, Serialize, Deserialize, SurrealValue)]
 pub struct ProviderCredential {
     pub id: RecordId,
     pub user: RecordId,
@@ -48,6 +59,23 @@ pub struct ProviderCredential {
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+impl fmt::Debug for ProviderCredential {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("ProviderCredential")
+            .field("id", &self.id)
+            .field("user", &self.user)
+            .field("provider", &self.provider)
+            .field("label", &self.label)
+            .field("encrypted_api_key", &"<redacted>")
+            .field("tags", &self.tags)
+            .field("enabled", &self.enabled)
+            .field("last_used_at", &self.last_used_at)
+            .field("created_at", &self.created_at)
+            .field("updated_at", &self.updated_at)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
@@ -166,10 +194,19 @@ pub struct UpdateVirtualApiKeyInput {
     pub expires_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+#[derive(Clone, Serialize, Deserialize, SurrealValue)]
 pub struct CreatedVirtualApiKey {
     pub record: VirtualApiKey,
     pub raw_key: String,
+}
+
+impl fmt::Debug for CreatedVirtualApiKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreatedVirtualApiKey")
+            .field("record", &self.record)
+            .field("raw_key", &"<redacted>")
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]

@@ -6,8 +6,5 @@ msrv = "1.85"
 # Cognitive complexity threshold before clippy warns about a function being too complex.
 cognitive-complexity-threshold = 25
 
-# Avoid warnings on large error type variants; AppError can be large.
-enum-variant-size-differences-threshold = 512
-
 # Allow slightly longer lines in some contexts.
 max-fn-params-bools = 3

@@ -5,6 +5,9 @@ pub enum DatabaseError {
     #[error("invalid database configuration: {0}")]
     InvalidConfig(String),
 
+    #[error("not found: {0}")]
+    NotFound(String),
+
     #[error("database operation failed: {0}")]
     Database(#[from] Box<surrealdb::Error>),
 

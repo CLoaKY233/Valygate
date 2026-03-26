@@ -1,5 +1,6 @@
 use axum::{extract::FromRequestParts, http::request::Parts};
 use std::sync::Arc;
+use tracing::error;
 use valymux_core::error::AppError;
 use valymux_surrealdb::User;
 
@@ -33,7 +34,10 @@ impl FromRequestParts<Arc<AppState>> for RequireAuth {
             .database
             .authenticate_user(token)
             .await
-            .map_err(|_| AppError::Unauthorized("Invalid or expired token".to_string()))?;
+            .map_err(|e| {
+                error!(error = ?e, "authenticate_user failed");
+                AppError::Unauthorized("Invalid or expired token".to_string())
+            })?;
 
         Ok(RequireAuth {
             user,

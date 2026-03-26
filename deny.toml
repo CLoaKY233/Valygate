@@ -11,7 +11,7 @@ all-features = false
 [advisories]
 # Warn on unmaintained crates rather than hard-failing; some transitive deps
 # may lag on this status without posing immediate risk.
-unmaintained = "warn"
+unmaintained = "workspace"
 yanked = "deny"
 ignore = [
     # Add advisory IDs here only with a justification comment, e.g.:

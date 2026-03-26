@@ -33,7 +33,7 @@ The project is organized as a Rust workspace:
 ## Development Workflows
 
 ### Environment Configuration
-ValyGate uses environment variables for configuration. Key variables include:
+ValyMux uses environment variables for configuration. Key variables include:
 - `SERVER_HOST`: Host to bind the server to (default: `0.0.0.0`).
 - `SERVER_PORT`: Port to listen on (default: `3000`).
 - `LOG_FORMAT`: Format of logs (`pretty`, `json`, `compact`).

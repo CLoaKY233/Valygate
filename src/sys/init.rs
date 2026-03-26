@@ -48,13 +48,16 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
     let database = Database::connect(config.database_config())
         .await
         .context("Failed to connect to SurrealDB")?;
+    info!("Connected to SurrealDB");
     database
         .bootstrap()
         .await
         .context("Failed to bootstrap SurrealDB schema")?;
+    info!("SurrealDB schema bootstrapped");
 
     let state = Arc::new(AppState {
         config,
+        reqwest_client: http_client.clone(),
         http_client: std::sync::Arc::new(http_client),
         database,
     });

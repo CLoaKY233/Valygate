@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::{sync::Arc, time::Instant};
 
 use axum::{
@@ -193,22 +194,11 @@ async fn signin(
     }))
 }
 
-#[tracing::instrument(skip(state, auth))]
-async fn me(
-    State(state): State<Arc<AppState>>,
-    auth: RequireAuth,
-) -> Result<Json<UserResponse>, AppError> {
+#[tracing::instrument(skip(auth))]
+async fn me(auth: RequireAuth) -> Result<Json<UserResponse>, AppError> {
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "me request received");
-    let user = state
-        .database
-        .authenticate_user(token)
-        .await
-        .map_err(|error| {
-            error!(error = %error, token_fingerprint = %token_fingerprint(token), "me failed");
-            internal_error(error)
-        })?;
-    Ok(Json(map_user(&user)))
+    Ok(Json(map_user(&auth.user)))
 }
 
 #[tracing::instrument(skip(state, auth, input))]
@@ -600,8 +590,8 @@ fn internal_error(error: impl std::fmt::Display) -> AppError {
 }
 
 fn token_fingerprint(token: &str) -> String {
-    let prefix: String = token.chars().take(8).collect();
-    format!("{prefix}..{}", token.len())
+    let hash = Sha256::digest(token.as_bytes());
+    hex::encode(&hash[..8])
 }
 
 fn map_user(user: &User) -> UserResponse {

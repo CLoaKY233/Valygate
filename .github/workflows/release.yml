@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
 
 env:
   CARGO_TERM_COLOR: always
@@ -113,18 +114,19 @@ jobs:
 
       - name: Generate checksums
         run: |
+          find dist -mindepth 2 -type f -exec mv {} dist/ \;
           cd dist
-          find . -type f -exec sha256sum {} \; | sed 's|\./[^/]*/||' | sort > SHA256SUMS
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -exec sha256sum {} \; | sed 's|\./||' | sort > SHA256SUMS
           cat SHA256SUMS
 
       - name: Extract release notes from CHANGELOG
         id: changelog
         run: |
-          # Extract the first versioned section from CHANGELOG.md
-          awk '/^## \[/ { if (found) exit; found=1; next } found { print }' CHANGELOG.md \
-            | sed '/^## \[/q' \
-            | head -n -1 \
-            > release_notes.md
+          # Extract lines between the first and second versioned section headers
+          awk '/^## \[/{if(found){exit}; found=1; next} found{print}' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "No release notes found in CHANGELOG.md" > release_notes.md
+          fi
           echo "Release notes extracted."
 
       - name: Create release
@@ -136,5 +138,4 @@ jobs:
           prerelease: ${{ contains(github.ref_name, '-') }}
           files: |
             dist/**/*
-            dist/SHA256SUMS
           fail_on_unmatched_files: false
