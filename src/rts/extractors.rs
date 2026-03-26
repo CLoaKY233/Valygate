@@ -30,14 +30,10 @@ impl FromRequestParts<Arc<AppState>> for RequireAuth {
             ));
         };
 
-        let user = state
-            .database
-            .authenticate_user(token)
-            .await
-            .map_err(|e| {
-                error!(error = ?e, "authenticate_user failed");
-                AppError::Unauthorized("Invalid or expired token".to_string())
-            })?;
+        let user = state.database.authenticate_user(token).await.map_err(|e| {
+            error!(error = ?e, "authenticate_user failed");
+            AppError::Unauthorized("Invalid or expired token".to_string())
+        })?;
 
         Ok(RequireAuth {
             user,
