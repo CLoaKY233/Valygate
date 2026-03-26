@@ -1,0 +1,80 @@
+# cargo-deny configuration for ValyMux
+# Reference: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# Only check the default features to keep the surface area manageable.
+all-features = false
+
+# ---------------------------------------------------------------------------
+# Advisories
+# ---------------------------------------------------------------------------
+[advisories]
+# Warn on unmaintained crates rather than hard-failing; some transitive deps
+# may lag on this status without posing immediate risk.
+unmaintained = "warn"
+yanked = "deny"
+ignore = [
+    # Add advisory IDs here only with a justification comment, e.g.:
+    # "RUSTSEC-2023-XXXX",  # upstream fix pending, mitigated by <reason>
+]
+
+# ---------------------------------------------------------------------------
+# Licenses
+# ---------------------------------------------------------------------------
+[licenses]
+# Confidence threshold for license text matching.
+confidence-threshold = 0.93
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Unicode-DFS-2016",
+    "OpenSSL",
+    "CC0-1.0",
+    "Zlib",
+]
+
+# AGPL-3.0 is the project's own license and is not present in dependencies.
+# If a transitive dep appears under AGPL, it must be reviewed.
+deny = [
+    "AGPL-3.0",
+    "GPL-2.0",
+    "GPL-3.0",
+    "LGPL-2.0",
+    "LGPL-2.1",
+    "LGPL-3.0",
+    "EUPL-1.1",
+    "OSL-3.0",
+]
+
+# ---------------------------------------------------------------------------
+# Bans
+# ---------------------------------------------------------------------------
+[bans]
+# Deny multiple versions of the same crate (promotes clean dep tree).
+multiple-versions = "warn"
+# Wildcard dependencies are sloppy — prefer pinned ranges.
+wildcards = "deny"
+# Deny known problematic crates.
+deny = [
+    # openssl: prefer rustls to avoid C toolchain dependencies in CI.
+    { crate = "openssl", reason = "Use rustls instead of OpenSSL to avoid C toolchain dependency." },
+]
+skip = [
+    # Add crate version duplicates to skip here only with justification, e.g.:
+    # { name = "syn", version = "=1" },  # required by older proc-macro deps
+]
+
+# ---------------------------------------------------------------------------
+# Sources
+# ---------------------------------------------------------------------------
+[sources]
+# Only allow crates from crates.io and the local workspace.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []

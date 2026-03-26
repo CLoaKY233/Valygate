@@ -1,0 +1,27 @@
+# rustfmt configuration for ValyMux
+# Reference: https://rust-lang.github.io/rustfmt/
+
+edition = "2024"
+
+# Imports
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+
+# Line width
+max_width = 100
+comment_width = 100
+wrap_comments = true
+
+# Trailing commas
+trailing_comma = "Vertical"
+trailing_semicolon = true
+
+# Blank lines
+blank_lines_upper_bound = 2
+blank_lines_lower_bound = 0
+
+# Misc
+use_field_init_shorthand = true
+use_try_shorthand = true
+force_explicit_abi = true
+newline_style = "Unix"

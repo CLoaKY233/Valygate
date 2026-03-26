@@ -1,0 +1,37 @@
+# Build artifacts
+target/
+
+# Environment files — never include secrets in the image
+.env
+.env.*
+!.env.example
+
+# Version control
+.git/
+.github/
+
+# Editor and IDE metadata
+.vscode/
+.idea/
+*.iml
+.DS_Store
+
+# Rust toolchain overrides (resolved at build time in CI)
+rust-toolchain
+rust-toolchain.toml
+
+# Documentation source (not needed in the runtime image)
+docs/
+*.md
+!README.md
+
+# Claude / AI tooling
+.claude/
+.agents/
+skills/
+skills-lock.json
+CLAUDE.md
+
+# Misc
+Dockerfile
+.dockerignore
