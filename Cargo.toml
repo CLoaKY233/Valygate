@@ -56,7 +56,7 @@ aes-gcm = "0.10.3"
 base64 = "0.22.1"
 hex = "0.4.3"
 rand = "0.10.0"
-sha2 = "0.10.9"
+sha2 = "0.11.0"
 surrealdb = "3.0.4"
 surrealdb-types = "3.0.4"
 valymux-surrealdb = { path = "crates/surrealdb" }
