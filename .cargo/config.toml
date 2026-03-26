@@ -11,10 +11,6 @@ build-release = "build --release --locked"
 # Run with debug logging
 run-dev = "run -- "
 
-[build]
-# Use all available CPU cores for parallel compilation.
-# Comment out if you need to limit resource usage on shared machines.
-jobs = 0  # 0 = number of logical CPUs
 
 [profile.dev]
 # Faster incremental builds during development.
