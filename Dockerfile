@@ -3,7 +3,7 @@
 # Pre-fetch and compile dependencies separately so that source-only changes
 # do not invalidate the dependency layer.
 # =============================================================================
-FROM rust:1.88-slim-bookworm AS deps
+FROM rust:1.94-slim-bookworm AS deps
 
 WORKDIR /build
 
