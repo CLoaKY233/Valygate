@@ -10,7 +10,7 @@ use valymux::{
 #[tokio::main]
 async fn main() -> Result<()> {
     let env_loaded = dotenvy::dotenv().is_ok();
-    telemetry::init_tracing();
+    valymux_telemetry::init_tracing();
     if env_loaded {
         info!(".env file loaded successfully");
     }
