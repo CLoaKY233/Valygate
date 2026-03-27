@@ -7,8 +7,7 @@ ValyMux is a single, self-hosted service that sits in front of your LLM provider
 [![CI](https://github.com/CLoaKY233/Valymux/actions/workflows/ci.yml/badge.svg)](https://github.com/CLoaKY233/Valymux/actions/workflows/ci.yml)
 [![Security Audit](https://github.com/CLoaKY233/Valymux/actions/workflows/audit.yml/badge.svg)](https://github.com/CLoaKY233/Valymux/actions/workflows/audit.yml)
 [![License: AGPL-3.0](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
-[![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/CLoaKY233/Valymux?utm_source=oss&utm_medium=github&utm_campaign=CLoaKY233%2FValymux&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)](https://coderabbit.ai)
-
+![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/CLoaKY233/Valymux?utm_source=oss&utm_medium=github&utm_campaign=CLoaKY233%2FValymux&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 ---
 
 ## Feature Status
