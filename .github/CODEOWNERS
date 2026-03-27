@@ -1,0 +1,18 @@
+# CODEOWNERS
+#
+# Each line is a file pattern followed by one or more owners.
+# Owners are automatically requested for review when a PR touches matching paths.
+# The last matching pattern takes precedence.
+#
+# See: https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+# Current maintainer: @CLoaKY233
+# As the project grows and you accept contributors, add their handles here.
+# Example: * @CLoaKY233 @NewContributor @AnotherMaintainer
+
+# Default owner
+*                           @CLoaKY233
+
+# As you add maintainers, uncomment and update these high-sensitivity areas:
+# crates/surrealdb/src/crypto.rs  @CLoaKY233 @TrustedMaintainer
+# src/rts/extractors.rs           @CLoaKY233 @TrustedMaintainer

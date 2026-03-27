@@ -1,0 +1,141 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+      - "v[0-9]+.[0-9]+.[0-9]+-*"
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x86_64 (musl — fully static binary)
+          - target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            artifact: valymux-x86_64-linux
+            cross: true
+
+          # Linux arm64 (musl — fully static binary)
+          - target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            artifact: valymux-aarch64-linux
+            cross: true
+
+          # macOS x86_64
+          - target: x86_64-apple-darwin
+            runner: macos-latest
+            artifact: valymux-x86_64-macos
+            cross: false
+
+          # macOS arm64 (Apple Silicon)
+          - target: aarch64-apple-darwin
+            runner: macos-latest
+            artifact: valymux-aarch64-macos
+            cross: false
+
+          # Windows x86_64
+          - target: x86_64-pc-windows-msvc
+            runner: windows-latest
+            artifact: valymux-x86_64-windows
+            cross: false
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install cross (Linux musl targets)
+        if: matrix.cross
+        run: cargo install cross --locked
+
+      - name: Build (native)
+        if: "!matrix.cross"
+        run: cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross
+        run: cross build --release --target ${{ matrix.target }}
+
+      - name: Prepare artifact (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/valymux ${{ matrix.artifact }}
+          chmod +x ${{ matrix.artifact }}
+
+      - name: Prepare artifact (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          cp target/${{ matrix.target }}/release/valymux.exe ${{ matrix.artifact }}.exe
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}
+            ${{ matrix.artifact }}.exe
+          if-no-files-found: error
+          retention-days: 1
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist/
+
+      - name: Generate checksums
+        run: |
+          find dist -mindepth 2 -type f -exec mv {} dist/ \;
+          cd dist
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -exec sha256sum {} \; | sed 's|\./||' | sort > SHA256SUMS
+          cat SHA256SUMS
+
+      - name: Extract release notes from CHANGELOG
+        id: changelog
+        run: |
+          # Extract lines between the first and second versioned section headers
+          awk '/^## \[/{if(found){exit}; found=1; next} found{print}' CHANGELOG.md > release_notes.md
+          if [ ! -s release_notes.md ]; then
+            echo "No release notes found in CHANGELOG.md" > release_notes.md
+          fi
+          echo "Release notes extracted."
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ValyMux ${{ github.ref_name }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-') }}
+          files: |
+            dist/**/*
+          fail_on_unmatched_files: false

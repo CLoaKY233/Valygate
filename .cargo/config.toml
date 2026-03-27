@@ -1,0 +1,21 @@
+# Cargo workspace configuration
+# Reference: https://doc.rust-lang.org/cargo/reference/config.html
+
+[alias]
+# Run the full check suite that CI runs locally
+check-all = "clippy --all-targets --all-features -- -D warnings"
+
+# Build a release binary
+build-release = "build --release --locked"
+
+# Run with debug logging
+run-dev = "run -- "
+
+
+[profile.dev]
+# Faster incremental builds during development.
+incremental = true
+
+[profile.test]
+# Slightly faster test compilation.
+incremental = true

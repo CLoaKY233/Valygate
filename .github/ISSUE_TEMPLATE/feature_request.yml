@@ -1,0 +1,63 @@
+name: Feature Request
+description: Propose a new feature or improvement for ValyMux.
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please search existing issues before submitting to avoid duplicates.
+        Feature requests that include a clear problem statement and use case are
+        more likely to be considered and prioritised.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem Statement
+      description: |
+        Describe the problem or limitation you are experiencing.
+        Focus on the problem, not the solution.
+      placeholder: "When I want to route requests to different providers based on model name, I currently have to..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: |
+        Describe the solution you have in mind.
+        If you are unsure about implementation details, a high-level description is fine.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: Other approaches you have considered and why they are insufficient.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Which part of the codebase does this relate to?
+      options:
+        - Proxy / Request Forwarding
+        - Model Routing
+        - Observability / Metrics / Tracing
+        - Rate Limiting
+        - Prompt Management
+        - Authentication / API Keys
+        - SurrealDB / Persistence
+        - Configuration
+        - Documentation
+        - CI / Developer Experience
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional Context
+      description: Links to related issues, external specifications, or prior art.

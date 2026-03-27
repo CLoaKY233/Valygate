@@ -11,6 +11,9 @@ pub enum AppError {
     #[error("Invalid request: {0}")]
     BadRequest(String),
 
+    #[error("Not found: {0}")]
+    NotFound(String),
+
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
 
@@ -25,6 +28,7 @@ impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         let (status, error_message) = match &self {
             AppError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone()),
+            AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::Unauthorized(msg) => (StatusCode::UNAUTHORIZED, msg.clone()),
             AppError::ProviderTimeout => (StatusCode::GATEWAY_TIMEOUT, "Provider timeout".into()),
             AppError::Internal(err) => {
