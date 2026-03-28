@@ -4,7 +4,7 @@ use std::{sync::Arc, time::Instant};
 use axum::{
     Json, Router,
     extract::{Path, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     response::Response,
     routing::{get, post},
 };
@@ -15,9 +15,9 @@ use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use valymux_core::error::AppError;
 use valymux_surrealdb::{
-    CreateProviderCredentialInput, CreateVirtualApiKeyInput, ModelCatalogEntry, ProviderCredential,
-    ProviderKind, SigninInput, SignupInput, UpdateProfileInput, UpdateProviderCredentialInput,
-    UpdateVirtualApiKeyInput, User, VirtualApiKey,
+    CreateProviderCredentialInput, CreateVirtualApiKeyInput, DatabaseError, ModelCatalogEntry,
+    ProviderCredential, ProviderKind, SigninInput, SignupInput, UpdateProfileInput,
+    UpdateProviderCredentialInput, UpdateVirtualApiKeyInput, User, VirtualApiKey,
 };
 
 use crate::{rts::extractors::RequireAuth, svc::proxy, sys::state::AppState};
@@ -34,6 +34,8 @@ pub fn router() -> Router<Arc<AppState>> {
                 .patch(update_provider)
                 .delete(delete_provider),
         )
+        .route("/providers/{provider_id}/sync", post(sync_provider))
+        .route("/providers/{provider_id}/models", get(list_provider_models))
         .route(
             "/virtual-keys",
             get(list_virtual_keys).post(create_virtual_key),
@@ -48,6 +50,8 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/models/{alias}", get(get_model))
         .route("/v1/chat/completions", post(chat_completions))
 }
+
+// ── Response types ────────────────────────────────────────────────────────────
 
 #[derive(Serialize)]
 struct AuthResponse {
@@ -71,6 +75,10 @@ struct ProviderResponse {
     tags: Vec<String>,
     enabled: bool,
     last_used_at: Option<String>,
+    sync_status: String,
+    sync_error: Option<String>,
+    last_synced_at: Option<String>,
+    model_count: i64,
     created_at: String,
     updated_at: String,
 }
@@ -103,8 +111,7 @@ struct ModelResponse {
     display_name: String,
     provider: String,
     upstream_model: String,
-    description: String,
-    tags: Vec<String>,
+    description: Option<String>,
     enabled: bool,
     context_window_tokens: i64,
     max_output_tokens: i64,
@@ -122,6 +129,8 @@ struct ModelResponse {
     supports_json_mode: bool,
     supports_parallel_tool_calls: bool,
 }
+
+// ── Request types ─────────────────────────────────────────────────────────────
 
 #[derive(Deserialize)]
 struct CreateProviderRequest {
@@ -162,6 +171,8 @@ struct UpdateVirtualKeyRequest {
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+// ── Auth handlers ─────────────────────────────────────────────────────────────
+
 #[tracing::instrument(skip(state, input))]
 async fn signup(
     State(state): State<Arc<AppState>>,
@@ -170,7 +181,10 @@ async fn signup(
     debug!("signup request received");
     let session = state.database.signup_user(input).await.map_err(|error| {
         error!(error = %error, "signup failed");
-        internal_error(error)
+        match error {
+            DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
+            other => internal_error(other),
+        }
     })?;
     Ok(Json(AuthResponse {
         user: map_user(&session.user),
@@ -186,13 +200,18 @@ async fn signin(
     debug!("signin request received");
     let session = state.database.signin_user(input).await.map_err(|error| {
         error!(error = %error, "signin failed");
-        internal_error(error)
+        match error {
+            DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
+            other => internal_error(other),
+        }
     })?;
     Ok(Json(AuthResponse {
         user: map_user(&session.user),
         token: session.token,
     }))
 }
+
+// ── Profile handlers ──────────────────────────────────────────────────────────
 
 #[tracing::instrument(skip(auth))]
 async fn me(auth: RequireAuth) -> Result<Json<UserResponse>, AppError> {
@@ -219,6 +238,8 @@ async fn update_me(
         })?;
     Ok(Json(map_user(&user)))
 }
+
+// ── Provider credential handlers ──────────────────────────────────────────────
 
 #[tracing::instrument(skip(state, auth))]
 async fn list_providers(
@@ -250,7 +271,7 @@ async fn create_provider(
         provider = %input.provider.as_str(),
         "create_provider request received"
     );
-    let provider = state
+    let credential = state
         .database
         .create_provider_credential(
             token,
@@ -270,7 +291,15 @@ async fn create_provider(
             );
             internal_error(error)
         })?;
-    Ok(Json(map_provider(&provider)))
+
+    // Spawn background model discovery — does not block the response
+    let state_clone = Arc::clone(&state);
+    let credential_id = credential.id.to_sql();
+    tokio::spawn(async move {
+        crate::svc::discovery::run_sync(state_clone, &credential_id).await;
+    });
+
+    Ok(Json(map_provider(&credential)))
 }
 
 #[tracing::instrument(skip(state, auth))]
@@ -370,6 +399,107 @@ async fn delete_provider(
     Ok(Json(map_provider(&provider)))
 }
 
+/// Triggers a manual model re-sync for a provider credential. Returns 202 immediately.
+#[tracing::instrument(skip(state, auth))]
+async fn sync_provider(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(provider_id): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let token = &auth.token;
+    debug!(
+        token_fingerprint = %token_fingerprint(token),
+        provider_id = %provider_id,
+        "sync_provider request received"
+    );
+
+    // Verify user owns this credential
+    let credential = state
+        .database
+        .get_provider_credential(token, &provider_id)
+        .await
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                provider_id = %provider_id,
+                "sync_provider: get_provider_credential failed"
+            );
+            internal_error(error)
+        })?
+        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
+
+    let credential_id = credential.id.to_sql();
+
+    // Mark as syncing immediately
+    state
+        .database
+        .set_credential_sync_status(&credential_id, "syncing", None)
+        .await
+        .map_err(|error| {
+            error!(error = %error, credential_id = %credential_id, "sync_provider: failed to set status");
+            internal_error(error)
+        })?;
+
+    // Spawn background task
+    let state_clone = Arc::clone(&state);
+    let cid = credential_id.clone();
+    tokio::spawn(async move {
+        crate::svc::discovery::run_sync(state_clone, &cid).await;
+    });
+
+    Ok(StatusCode::ACCEPTED)
+}
+
+/// Returns all discovered models for a specific provider credential.
+#[tracing::instrument(skip(state, auth))]
+async fn list_provider_models(
+    State(state): State<Arc<AppState>>,
+    auth: RequireAuth,
+    Path(provider_id): Path<String>,
+) -> Result<Json<Vec<ModelResponse>>, AppError> {
+    let token = &auth.token;
+    debug!(
+        token_fingerprint = %token_fingerprint(token),
+        provider_id = %provider_id,
+        "list_provider_models request received"
+    );
+
+    // Verify user owns this credential (row-level security enforced by get_provider_credential)
+    state
+        .database
+        .get_provider_credential(token, &provider_id)
+        .await
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                provider_id = %provider_id,
+                "list_provider_models: ownership check failed"
+            );
+            internal_error(error)
+        })?
+        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
+
+    let models = state
+        .database
+        .list_models_for_credential(&provider_id)
+        .await
+        .map_err(|error| {
+            error!(
+                error = %error,
+                token_fingerprint = %token_fingerprint(token),
+                provider_id = %provider_id,
+                "list_provider_models failed"
+            );
+            internal_error(error)
+        })?;
+
+    Ok(Json(models.iter().map(map_model).collect()))
+}
+
+// ── Virtual key handlers ──────────────────────────────────────────────────────
+
 #[tracing::instrument(skip(state, auth))]
 async fn list_virtual_keys(
     State(state): State<Arc<AppState>>,
@@ -410,7 +540,10 @@ async fn create_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), "create_virtual_key failed");
-            internal_error(error)
+            match error {
+                valymux_surrealdb::DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
+                other => internal_error(other),
+            }
         })?;
     Ok(Json(CreateVirtualKeyResponse {
         key: map_virtual_key(&created.record),
@@ -463,7 +596,10 @@ async fn update_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key failed");
-            internal_error(error)
+            match error {
+                valymux_surrealdb::DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
+                other => internal_error(other),
+            }
         })?
         .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
@@ -488,6 +624,8 @@ async fn delete_virtual_key(
         .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
 }
+
+// ── Model catalog handlers ────────────────────────────────────────────────────
 
 #[tracing::instrument(skip(state, auth))]
 async fn list_models(
@@ -526,6 +664,8 @@ async fn get_model(
         .ok_or_else(|| AppError::NotFound("Model not found".into()))?;
     Ok(Json(map_model(&model)))
 }
+
+// ── Proxy handler ─────────────────────────────────────────────────────────────
 
 #[tracing::instrument(skip(state, headers, payload))]
 async fn chat_completions(
@@ -569,6 +709,8 @@ async fn chat_completions(
     response
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 fn extract_bearer(headers: &HeaderMap) -> Result<&str, AppError> {
     let header = headers
         .get(axum::http::header::AUTHORIZATION)
@@ -610,7 +752,11 @@ fn map_provider(provider: &ProviderCredential) -> ProviderResponse {
         label: provider.label.clone(),
         tags: provider.tags.clone(),
         enabled: provider.enabled,
-        last_used_at: provider.last_used_at.map(|value| value.to_rfc3339()),
+        last_used_at: provider.last_used_at.map(|v| v.to_rfc3339()),
+        sync_status: provider.sync_status.clone(),
+        sync_error: provider.sync_error.clone(),
+        last_synced_at: provider.last_synced_at.map(|v| v.to_rfc3339()),
+        model_count: provider.model_count,
         created_at: provider.created_at.to_rfc3339(),
         updated_at: provider.updated_at.to_rfc3339(),
     }
@@ -624,8 +770,8 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
         allowed_models: key.allowed_models.clone(),
         tags: key.tags.clone(),
         enabled: key.enabled,
-        expires_at: key.expires_at.map(|value| value.to_rfc3339()),
-        last_used_at: key.last_used_at.map(|value| value.to_rfc3339()),
+        expires_at: key.expires_at.map(|v| v.to_rfc3339()),
+        last_used_at: key.last_used_at.map(|v| v.to_rfc3339()),
         created_at: key.created_at.to_rfc3339(),
         updated_at: key.updated_at.to_rfc3339(),
     }
@@ -639,7 +785,6 @@ fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
         provider: model.provider.clone(),
         upstream_model: model.upstream_model.clone(),
         description: model.description.clone(),
-        tags: model.tags.clone(),
         enabled: model.enabled,
         context_window_tokens: model.context_window_tokens,
         max_output_tokens: model.max_output_tokens,

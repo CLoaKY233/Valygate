@@ -11,7 +11,7 @@ DEFINE FIELD IF NOT EXISTS key_prefix ON TABLE virtual_api_key TYPE string;
 DEFINE FIELD IF NOT EXISTS key_hash ON TABLE virtual_api_key TYPE string;
 DEFINE FIELD IF NOT EXISTS allowed_models ON TABLE virtual_api_key TYPE array;
 DEFINE FIELD IF NOT EXISTS tags ON TABLE virtual_api_key TYPE array;
-DEFINE FIELD IF NOT EXISTS enabled ON TABLE virtual_api_key TYPE bool VALUE true;
+DEFINE FIELD OVERWRITE enabled ON TABLE virtual_api_key TYPE bool DEFAULT true;
 DEFINE FIELD IF NOT EXISTS expires_at ON TABLE virtual_api_key TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS last_used_at ON TABLE virtual_api_key TYPE option<datetime>;
 DEFINE FIELD IF NOT EXISTS created_at ON TABLE virtual_api_key TYPE datetime VALUE time::now() READONLY;

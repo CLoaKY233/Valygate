@@ -1,5 +1,4 @@
-mod anthropic;
-mod openai;
+mod google_genai;
 mod types;
 
 use std::{sync::Arc, time::Instant};
@@ -52,6 +51,7 @@ impl ProxyExecutor {
             .await
             .map_err(|e| match e {
                 DatabaseError::NotFound(msg) => AppError::NotFound(msg),
+                DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
                 other => internal_error(other),
             })?;
 
@@ -68,12 +68,13 @@ impl ProxyExecutor {
             .validate_request(&canonical_request, &route)
             .map_err(|error| AppError::BadRequest(error.to_string()))?;
 
+        let request_url = adapter.request_url(&route, canonical_request.stream);
         let outbound_payload = adapter
             .prepare_body(&canonical_request, &route)
             .map_err(|error| AppError::BadRequest(error.to_string()))?;
         let builder = adapter
             .apply_headers(
-                state.reqwest_client.post(adapter.target_url()),
+                state.reqwest_client.post(&request_url),
                 &provider_api_key,
                 &request_id,
             )
@@ -101,7 +102,7 @@ impl ProxyExecutor {
                         route: &route,
                         status_code,
                         latency_ms,
-                        request_url: adapter.target_url(),
+                        request_url: &request_url,
                         stream: true,
                         error_message: None,
                         usage: UsageSummary {
@@ -113,7 +114,7 @@ impl ProxyExecutor {
                 .await;
 
                 let response_status =
-                    upstream_status_code_or_warn(status_code, adapter.target_url());
+                    upstream_status_code_or_warn(status_code, &request_url);
                 return Ok((response_status, headers, stream_body).into_response());
             }
 
@@ -137,7 +138,7 @@ impl ProxyExecutor {
                 route: &route,
                 status_code,
                 latency_ms,
-                request_url: adapter.target_url(),
+                request_url: &request_url,
                 stream: false,
                 error_message: if status_code >= 400 {
                     adapter.error_message(&body)
@@ -149,7 +150,7 @@ impl ProxyExecutor {
         )
         .await;
 
-        let response_status = upstream_status_code_or_warn(status_code, adapter.target_url());
+        let response_status = upstream_status_code_or_warn(status_code, &request_url);
         Ok((response_status, Json(translated)).into_response())
     }
 }
@@ -224,8 +225,7 @@ fn build_request_log(draft: RequestLogDraft<'_>) -> RequestLogInput {
 
 fn provider_adapter(provider: &str) -> Result<&'static dyn ProviderAdapter, AppError> {
     match provider {
-        "openai" => Ok(&openai::OpenAiAdapter),
-        "anthropic" => Ok(&anthropic::AnthropicAdapter),
+        "google-genai" => Ok(&google_genai::GoogleGenAiAdapter),
         _ => Err(AppError::BadRequest(format!(
             "Unsupported provider `{provider}`"
         ))),
@@ -240,6 +240,13 @@ pub struct UsageSummary {
 pub trait ProviderAdapter: Sync {
     fn name(&self) -> &'static str;
     fn target_url(&self) -> &'static str;
+    /// Returns the full request URL for the upstream call. Defaults to `target_url()`, but
+    /// providers whose URL embeds the model name or operation (e.g. Google GenAI) should
+    /// override this.
+    fn request_url(&self, route: &ResolvedProxyRoute, stream: bool) -> String {
+        let _ = (route, stream);
+        self.target_url().to_string()
+    }
     /// # Errors
     /// Returns an error when provider-specific constraints are not met for the request or route.
     fn validate_request(

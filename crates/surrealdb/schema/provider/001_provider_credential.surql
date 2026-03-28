@@ -10,8 +10,12 @@ DEFINE FIELD IF NOT EXISTS provider ON TABLE provider_credential TYPE string;
 DEFINE FIELD IF NOT EXISTS label ON TABLE provider_credential TYPE string;
 DEFINE FIELD IF NOT EXISTS encrypted_api_key ON TABLE provider_credential TYPE string;
 DEFINE FIELD IF NOT EXISTS tags ON TABLE provider_credential TYPE array;
-DEFINE FIELD IF NOT EXISTS enabled ON TABLE provider_credential TYPE bool VALUE true;
+DEFINE FIELD OVERWRITE enabled ON TABLE provider_credential TYPE bool DEFAULT true;
 DEFINE FIELD IF NOT EXISTS last_used_at ON TABLE provider_credential TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS sync_status ON TABLE provider_credential TYPE string DEFAULT "pending";
+DEFINE FIELD IF NOT EXISTS sync_error ON TABLE provider_credential TYPE option<string>;
+DEFINE FIELD IF NOT EXISTS last_synced_at ON TABLE provider_credential TYPE option<datetime>;
+DEFINE FIELD IF NOT EXISTS model_count ON TABLE provider_credential TYPE int DEFAULT 0;
 DEFINE FIELD IF NOT EXISTS created_at ON TABLE provider_credential TYPE datetime VALUE time::now() READONLY;
 DEFINE FIELD IF NOT EXISTS updated_at ON TABLE provider_credential TYPE datetime VALUE time::now();
 

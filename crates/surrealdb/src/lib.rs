@@ -29,8 +29,8 @@ use crypto::{
 pub use error::DatabaseError;
 pub use models::{
     AuthSession, CreateProviderCredentialInput, CreateVirtualApiKeyInput, CreatedVirtualApiKey,
-    ModelCatalogEntry, ProviderCredential, ProviderKind, RequestLog, RequestLogInput,
-    ResolvedProxyRoute, SigninInput, SignupInput, UpdateProfileInput,
+    ModelCatalogEntry, ModelSyncInput, ProviderCredential, ProviderKind, RequestLog,
+    RequestLogInput, ResolvedProxyRoute, SigninInput, SignupInput, UpdateProfileInput,
     UpdateProviderCredentialInput, UpdateVirtualApiKeyInput, User, VerifiedVirtualApiKey,
     VirtualApiKey,
 };
@@ -100,7 +100,15 @@ impl Database {
                     password: input.password.clone(),
                 },
             })
-            .await?;
+            .await
+            .map_err(|e| {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("signup") && msg.contains("query failed") {
+                    DatabaseError::InvalidConfig("an account with that email already exists".into())
+                } else {
+                    DatabaseError::from(e)
+                }
+            })?;
 
         let user = user_client
             .query("SELECT * FROM $auth.id;")
@@ -133,7 +141,15 @@ impl Database {
                     password: input.password.clone(),
                 },
             })
-            .await?;
+            .await
+            .map_err(|e| {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("no record was returned") {
+                    DatabaseError::InvalidConfig("invalid email or password".into())
+                } else {
+                    DatabaseError::from(e)
+                }
+            })?;
 
         let user = user_client
             .query("SELECT * FROM $auth.id;")
@@ -222,7 +238,9 @@ impl Database {
                     label: $label,
                     encrypted_api_key: $encrypted_api_key,
                     tags: $tags,
-                    enabled: true
+                    enabled: true,
+                    sync_status: 'pending',
+                    model_count: 0
                 };",
             )
             .bind(("provider", input.provider.as_str().to_string()))
@@ -253,24 +271,27 @@ impl Database {
 
         client
             .query(
-                "LET $update = {
+                "UPDATE $provider_id MERGE {
                     label: $label,
                     tags: $tags,
                     enabled: $enabled,
                     updated_at: time::now()
-                };
-                UPDATE $provider_id MERGE (
-                    $encrypted_api_key = NONE
-                        ? $update
-                        : $update.merge({ encrypted_api_key: $encrypted_api_key })
-                );",
+                };",
             )
             .bind(("provider_id", provider_id.clone()))
             .bind(("label", input.label))
             .bind(("tags", input.tags))
             .bind(("enabled", input.enabled))
-            .bind(("encrypted_api_key", encrypted_api_key))
             .await?;
+
+        // Update encrypted_api_key separately only when a new key is provided
+        if let Some(key) = encrypted_api_key {
+            client
+                .query("UPDATE $provider_id MERGE { encrypted_api_key: $encrypted_api_key };")
+                .bind(("provider_id", provider_id.clone()))
+                .bind(("encrypted_api_key", key))
+                .await?;
+        }
 
         self.get_provider_credential(token, &provider_id.to_sql())
             .await
@@ -283,6 +304,13 @@ impl Database {
     ) -> Result<Option<ProviderCredential>, DatabaseError> {
         let client = self.fresh_client_with_token(token).await?;
         let provider_id = parse_thing(provider_id)?;
+
+        // Delete all model_catalog entries for this credential (root client — bypasses permissions)
+        self.client
+            .query("DELETE model_catalog WHERE provider_credential = $cred_id;")
+            .bind(("cred_id", provider_id.clone()))
+            .await?;
+
         client
             .query("DELETE $provider_id RETURN BEFORE;")
             .bind(("provider_id", provider_id))
@@ -323,7 +351,8 @@ impl Database {
         token: &str,
         input: CreateVirtualApiKeyInput,
     ) -> Result<CreatedVirtualApiKey, DatabaseError> {
-        self.ensure_model_aliases_exist(&input.allowed_models)
+        let user = self.authenticate_user(token).await?;
+        self.ensure_model_aliases_exist_for_user(&user.id, &input.allowed_models)
             .await?;
 
         let client = self.fresh_client_with_token(token).await?;
@@ -366,7 +395,8 @@ impl Database {
         key_id: &str,
         input: UpdateVirtualApiKeyInput,
     ) -> Result<Option<VirtualApiKey>, DatabaseError> {
-        self.ensure_model_aliases_exist(&input.allowed_models)
+        let user = self.authenticate_user(token).await?;
+        self.ensure_model_aliases_exist_for_user(&user.id, &input.allowed_models)
             .await?;
 
         let client = self.fresh_client_with_token(token).await?;
@@ -408,43 +438,198 @@ impl Database {
             .map_err(Into::into)
     }
 
+    /// Lists models from the user's discovered catalog (across all their credentials).
     pub async fn list_usable_models(
         &self,
         token: &str,
     ) -> Result<Vec<ModelCatalogEntry>, DatabaseError> {
         let user = self.authenticate_user(token).await?;
-        self.list_usable_models_for_user(&user.id.to_sql()).await
+        self.client
+            .query(
+                "SELECT * FROM model_catalog
+                 WHERE user = $user_id
+                   AND enabled = true
+                   AND provider_credential.enabled = true
+                 ORDER BY alias ASC;",
+            )
+            .bind(("user_id", user.id))
+            .await?
+            .take::<Vec<ModelCatalogEntry>>(0)
+            .map_err(Into::into)
     }
 
+    /// Gets a single model from the user's catalog by alias.
     pub async fn get_model_by_alias_for_user(
         &self,
         token: &str,
         alias: &str,
     ) -> Result<Option<ModelCatalogEntry>, DatabaseError> {
         let user = self.authenticate_user(token).await?;
-        let models = self.list_usable_models_for_user(&user.id.to_sql()).await?;
-        Ok(models.into_iter().find(|model| model.alias == alias))
-    }
-
-    pub async fn list_usable_models_for_user(
-        &self,
-        user_id: &str,
-    ) -> Result<Vec<ModelCatalogEntry>, DatabaseError> {
-        let user_id = parse_thing(user_id)?;
         self.client
             .query(
                 "SELECT * FROM model_catalog
-                 WHERE enabled = true
-                   AND provider IN (
-                        SELECT VALUE provider FROM provider_credential
-                        WHERE user = $user_id AND enabled = true
-                   )
+                 WHERE user = $user_id
+                   AND alias = $alias
+                   AND enabled = true
+                 LIMIT 1;",
+            )
+            .bind(("user_id", user.id))
+            .bind(("alias", alias.to_string()))
+            .await?
+            .take::<Option<ModelCatalogEntry>>(0)
+            .map_err(Into::into)
+    }
+
+    /// Lists models discovered for a specific credential. Uses root client — caller must verify
+    /// ownership at the handler level.
+    pub async fn list_models_for_credential(
+        &self,
+        credential_id: &str,
+    ) -> Result<Vec<ModelCatalogEntry>, DatabaseError> {
+        let cred_id = parse_thing(credential_id)?;
+        self.client
+            .query(
+                "SELECT * FROM model_catalog
+                 WHERE provider_credential = $cred_id
+                   AND enabled = true
                  ORDER BY alias ASC;",
             )
-            .bind(("user_id", user_id))
+            .bind(("cred_id", cred_id))
             .await?
             .take::<Vec<ModelCatalogEntry>>(0)
             .map_err(Into::into)
+    }
+
+    /// Fetches a provider credential using the root client. Used by background sync tasks where
+    /// no user token is available.
+    pub async fn get_credential_for_sync(
+        &self,
+        credential_id: &str,
+    ) -> Result<Option<ProviderCredential>, DatabaseError> {
+        let id = parse_thing(credential_id)?;
+        self.client
+            .query("SELECT * FROM $id;")
+            .bind(("id", id))
+            .await?
+            .take::<Option<ProviderCredential>>(0)
+            .map_err(Into::into)
+    }
+
+    /// Updates sync status on a provider credential. Uses root client (background task context).
+    pub async fn set_credential_sync_status(
+        &self,
+        credential_id: &str,
+        status: &str,
+        error: Option<String>,
+    ) -> Result<(), DatabaseError> {
+        let id = parse_thing(credential_id)?;
+        self.client
+            .query(
+                "UPDATE $id MERGE {
+                    sync_status: $status,
+                    sync_error: $error,
+                    updated_at: time::now()
+                };",
+            )
+            .bind(("id", id))
+            .bind(("status", status.to_string()))
+            .bind(("error", error))
+            .await?;
+        Ok(())
+    }
+
+    /// Replaces the model catalog for a credential: deletes all existing entries then batch-inserts
+    /// the newly discovered models. Uses root client (background task context).
+    pub async fn sync_models(
+        &self,
+        credential_id: &str,
+        user_id: RecordId,
+        models: Vec<ModelSyncInput>,
+    ) -> Result<i64, DatabaseError> {
+        let cred_id = parse_thing(credential_id)?;
+
+        // Delete existing models for this credential
+        self.client
+            .query("DELETE model_catalog WHERE provider_credential = $cred_id;")
+            .bind(("cred_id", cred_id.clone()))
+            .await?;
+
+        let count = i64::try_from(models.len()).unwrap_or(i64::MAX);
+
+        // Insert each discovered model
+        for model in models {
+            self.client
+                .query(
+                    "CREATE model_catalog CONTENT {
+                        user: $user_id,
+                        provider_credential: $cred_id,
+                        alias: $alias,
+                        provider: $provider,
+                        upstream_model: $upstream_model,
+                        display_name: $display_name,
+                        description: $description,
+                        context_window_tokens: $context_window_tokens,
+                        max_output_tokens: $max_output_tokens,
+                        supports_streaming: $supports_streaming,
+                        supports_thinking: $supports_thinking,
+                        thinking_required: $thinking_required,
+                        supports_temperature: $supports_temperature,
+                        temperature_fixed_to: $temperature_fixed_to,
+                        temperature_min: $temperature_min,
+                        temperature_max: $temperature_max,
+                        supports_top_p: $supports_top_p,
+                        supports_system_messages: $supports_system_messages,
+                        supports_tools: $supports_tools,
+                        supports_vision: $supports_vision,
+                        supports_json_mode: $supports_json_mode,
+                        supports_parallel_tool_calls: $supports_parallel_tool_calls,
+                        enabled: true
+                    };",
+                )
+                .bind(("user_id", user_id.clone()))
+                .bind(("cred_id", cred_id.clone()))
+                .bind(("alias", model.alias))
+                .bind(("provider", model.provider))
+                .bind(("upstream_model", model.upstream_model))
+                .bind(("display_name", model.display_name))
+                .bind(("description", model.description))
+                .bind(("context_window_tokens", model.context_window_tokens))
+                .bind(("max_output_tokens", model.max_output_tokens))
+                .bind(("supports_streaming", model.supports_streaming))
+                .bind(("supports_thinking", model.supports_thinking))
+                .bind(("thinking_required", model.thinking_required))
+                .bind(("supports_temperature", model.supports_temperature))
+                .bind(("temperature_fixed_to", model.temperature_fixed_to))
+                .bind(("temperature_min", model.temperature_min))
+                .bind(("temperature_max", model.temperature_max))
+                .bind(("supports_top_p", model.supports_top_p))
+                .bind(("supports_system_messages", model.supports_system_messages))
+                .bind(("supports_tools", model.supports_tools))
+                .bind(("supports_vision", model.supports_vision))
+                .bind(("supports_json_mode", model.supports_json_mode))
+                .bind((
+                    "supports_parallel_tool_calls",
+                    model.supports_parallel_tool_calls,
+                ))
+                .await?;
+        }
+
+        // Update model count and last_synced_at on the credential
+        self.client
+            .query(
+                "UPDATE $cred_id MERGE {
+                    model_count: $count,
+                    last_synced_at: time::now(),
+                    sync_status: 'synced',
+                    sync_error: NONE,
+                    updated_at: time::now()
+                };",
+            )
+            .bind(("cred_id", cred_id))
+            .bind(("count", count))
+            .await?;
+
+        Ok(count)
     }
 
     pub async fn verify_virtual_api_key(
@@ -482,11 +667,13 @@ impl Database {
             .await?
             .ok_or_else(|| DatabaseError::InvalidConfig("virtual API key is invalid".into()))?;
 
-        if !verified
-            .key
-            .allowed_models
-            .iter()
-            .any(|model| model == &requested_model)
+        // Empty allowed_models = unrestricted (key can use any model the user has access to)
+        if !verified.key.allowed_models.is_empty()
+            && !verified
+                .key
+                .allowed_models
+                .iter()
+                .any(|model| model == &requested_model)
         {
             return Err(DatabaseError::InvalidConfig(
                 "virtual API key is not allowed to use this model".into(),
@@ -509,38 +696,40 @@ impl Database {
             ));
         }
 
+        // Find model in the user's personal catalog (not global)
         let model = self
             .client
             .query(
                 "SELECT * FROM model_catalog
-                 WHERE alias = $alias
-                   AND enabled = true
-                 LIMIT 1;",
-            )
-            .bind(("alias", requested_model))
-            .await?
-            .take::<Option<ModelCatalogEntry>>(0)?
-            .ok_or_else(|| DatabaseError::NotFound("requested model was not found".into()))?;
-
-        let provider_credential = self
-            .client
-            .query(
-                "SELECT * FROM provider_credential
                  WHERE user = $user_id
-                   AND provider = $provider
+                   AND alias = $alias
                    AND enabled = true
-                 ORDER BY updated_at DESC
                  LIMIT 1;",
             )
             .bind(("user_id", user.id.clone()))
-            .bind(("provider", model.provider.clone()))
+            .bind(("alias", requested_model))
+            .await?
+            .take::<Option<ModelCatalogEntry>>(0)?
+            .ok_or_else(|| {
+                DatabaseError::NotFound("requested model was not found in your catalog".into())
+            })?;
+
+        // Fetch the exact provider credential that discovered this model (direct FK)
+        let provider_credential = self
+            .client
+            .query("SELECT * FROM $cred_id;")
+            .bind(("cred_id", model.provider_credential.clone()))
             .await?
             .take::<Option<ProviderCredential>>(0)?
             .ok_or_else(|| {
-                DatabaseError::NotFound(
-                    "no enabled provider credential exists for this model".into(),
-                )
+                DatabaseError::NotFound("provider credential for this model was not found".into())
             })?;
+
+        if !provider_credential.enabled {
+            return Err(DatabaseError::NotFound(
+                "provider credential for this model is disabled".into(),
+            ));
+        }
 
         Ok(ResolvedProxyRoute {
             user,
@@ -609,7 +798,12 @@ impl Database {
         decrypt_secret(&self.encryption_key, encrypted_api_key)
     }
 
-    async fn ensure_model_aliases_exist(&self, aliases: &[String]) -> Result<(), DatabaseError> {
+    /// Validates that all provided model aliases exist in the given user's discovered catalog.
+    async fn ensure_model_aliases_exist_for_user(
+        &self,
+        user_id: &RecordId,
+        aliases: &[String],
+    ) -> Result<(), DatabaseError> {
         if aliases.is_empty() {
             return Ok(());
         }
@@ -618,24 +812,26 @@ impl Database {
             .client
             .query(
                 "SELECT VALUE alias FROM model_catalog
-                 WHERE alias INSIDE $aliases
+                 WHERE user = $user_id
+                   AND alias INSIDE $aliases
                    AND enabled = true;",
             )
+            .bind(("user_id", user_id.clone()))
             .bind(("aliases", aliases.to_vec()))
             .await?
             .take::<Vec<String>>(0)?;
 
-        let existing_aliases: std::collections::HashSet<_> = existing_aliases.into_iter().collect();
-        let missing_aliases: Vec<_> = aliases
+        let existing_set: std::collections::HashSet<_> = existing_aliases.into_iter().collect();
+        let missing: Vec<_> = aliases
             .iter()
-            .filter(|alias| !existing_aliases.contains(alias.as_str()))
+            .filter(|alias| !existing_set.contains(alias.as_str()))
             .cloned()
             .collect();
 
-        if !missing_aliases.is_empty() {
+        if !missing.is_empty() {
             return Err(DatabaseError::InvalidConfig(format!(
-                "model alias(es) do not exist or are disabled: {}",
-                missing_aliases.join(", ")
+                "model alias(es) not found in your catalog: {}",
+                missing.join(", ")
             )));
         }
 
