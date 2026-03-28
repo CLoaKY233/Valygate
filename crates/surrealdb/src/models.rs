@@ -31,18 +31,15 @@ impl fmt::Debug for AuthSession {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, SurrealValue)]
 pub enum ProviderKind {
-    #[serde(rename = "openai")]
-    OpenAi,
-    #[serde(rename = "anthropic")]
-    Anthropic,
+    #[serde(rename = "google-genai")]
+    GoogleGenAi,
 }
 
 impl ProviderKind {
     #[must_use]
     pub fn as_str(self) -> &'static str {
         match self {
-            Self::OpenAi => "openai",
-            Self::Anthropic => "anthropic",
+            Self::GoogleGenAi => "google-genai",
         }
     }
 }
@@ -57,6 +54,10 @@ pub struct ProviderCredential {
     pub tags: Vec<String>,
     pub enabled: bool,
     pub last_used_at: Option<DateTime<Utc>>,
+    pub sync_status: String,
+    pub sync_error: Option<String>,
+    pub last_synced_at: Option<DateTime<Utc>>,
+    pub model_count: i64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -72,6 +73,10 @@ impl fmt::Debug for ProviderCredential {
             .field("tags", &self.tags)
             .field("enabled", &self.enabled)
             .field("last_used_at", &self.last_used_at)
+            .field("sync_status", &self.sync_status)
+            .field("sync_error", &self.sync_error)
+            .field("last_synced_at", &self.last_synced_at)
+            .field("model_count", &self.model_count)
             .field("created_at", &self.created_at)
             .field("updated_at", &self.updated_at)
             .finish()
@@ -98,12 +103,13 @@ pub struct VirtualApiKey {
 #[allow(clippy::struct_excessive_bools)]
 pub struct ModelCatalogEntry {
     pub id: RecordId,
+    pub user: RecordId,
+    pub provider_credential: RecordId,
     pub alias: String,
-    pub display_name: String,
     pub provider: String,
     pub upstream_model: String,
-    pub description: String,
-    pub tags: Vec<String>,
+    pub display_name: String,
+    pub description: Option<String>,
     pub enabled: bool,
     pub context_window_tokens: i64,
     pub max_output_tokens: i64,
@@ -122,6 +128,32 @@ pub struct ModelCatalogEntry {
     pub supports_parallel_tool_calls: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+/// Input for a single discovered model to be synced into the catalog.
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+#[allow(clippy::struct_excessive_bools)]
+pub struct ModelSyncInput {
+    pub alias: String,
+    pub provider: String,
+    pub upstream_model: String,
+    pub display_name: String,
+    pub description: Option<String>,
+    pub context_window_tokens: i64,
+    pub max_output_tokens: i64,
+    pub supports_streaming: bool,
+    pub supports_thinking: bool,
+    pub thinking_required: bool,
+    pub supports_temperature: bool,
+    pub temperature_fixed_to: Option<f64>,
+    pub temperature_min: Option<f64>,
+    pub temperature_max: Option<f64>,
+    pub supports_top_p: bool,
+    pub supports_system_messages: bool,
+    pub supports_tools: bool,
+    pub supports_vision: bool,
+    pub supports_json_mode: bool,
+    pub supports_parallel_tool_calls: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]

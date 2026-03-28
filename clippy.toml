@@ -1,7 +1,7 @@
 # clippy configuration for ValyMux
 # Reference: https://doc.rust-lang.org/clippy/configuration.html
 
-msrv = "1.85"
+msrv = "1.94"
 
 # Cognitive complexity threshold before clippy warns about a function being too complex.
 cognitive-complexity-threshold = 25
