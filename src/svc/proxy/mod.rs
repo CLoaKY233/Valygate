@@ -113,8 +113,7 @@ impl ProxyExecutor {
                 )
                 .await;
 
-                let response_status =
-                    upstream_status_code_or_warn(status_code, &request_url);
+                let response_status = upstream_status_code_or_warn(status_code, &request_url);
                 return Ok((response_status, headers, stream_body).into_response());
             }
 

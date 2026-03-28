@@ -2,8 +2,7 @@ use anyhow::{Result, anyhow, bail};
 use serde_json::Value;
 use valymux_surrealdb::ModelSyncInput;
 
-const LIST_URL: &str =
-    "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
+const LIST_URL: &str = "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000";
 
 pub async fn discover_models(
     api_key: &str,
@@ -92,7 +91,11 @@ fn map_model(m: &Value) -> Result<ModelSyncInput> {
         thinking_required: false,
         supports_temperature,
         temperature_fixed_to: None,
-        temperature_min: if supports_temperature { Some(0.0) } else { None },
+        temperature_min: if supports_temperature {
+            Some(0.0)
+        } else {
+            None
+        },
         temperature_max,
         supports_top_p,
         supports_system_messages: true,
