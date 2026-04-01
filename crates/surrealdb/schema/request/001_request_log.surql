@@ -1,9 +1,10 @@
-DEFINE TABLE IF NOT EXISTS request_log SCHEMAFULL
+DEFINE TABLE OVERWRITE request_log SCHEMAFULL
     PERMISSIONS
         FOR select
-            WHERE user = $auth.id
+            WHERE user = $auth.id AND $access = "account"
         FOR create
-            NONE
+            WHERE ($access = "account" AND user = $auth.id)
+               OR ($access = "virtual_key_access" AND user = $auth.user)
         FOR update, delete
             NONE;
 

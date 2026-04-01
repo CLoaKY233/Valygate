@@ -1,9 +1,12 @@
-DEFINE TABLE IF NOT EXISTS virtual_api_key SCHEMAFULL
+DEFINE TABLE OVERWRITE virtual_api_key SCHEMAFULL
     PERMISSIONS
-        FOR select, update, delete
-            WHERE user = $auth.id
+        FOR select
+            WHERE (user = $auth.id AND $access = "account")
+               OR (id = $auth AND $access = "virtual_key_access")
+        FOR update, delete
+            WHERE user = $auth.id AND $access = "account"
         FOR create
-            WHERE user = $auth.id;
+            WHERE user = $auth.id AND $access = "account";
 
 DEFINE FIELD IF NOT EXISTS user ON TABLE virtual_api_key TYPE record<user>;
 DEFINE FIELD IF NOT EXISTS name ON TABLE virtual_api_key TYPE string;

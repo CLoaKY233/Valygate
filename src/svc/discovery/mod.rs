@@ -6,10 +6,16 @@ use tracing::{info, warn};
 
 use crate::sys::state::AppState;
 
-/// Runs a full model discovery sync for the given provider credential in the background.
+/// Runs a full model discovery sync for the given provider credential.
+/// Requires a JWT token since sync operations are now user-scoped.
 /// Updates sync_status on the credential throughout the process.
-pub async fn run_sync(state: Arc<AppState>, credential_id: &str) {
-    let credential = match state.database.get_credential_for_sync(credential_id).await {
+pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
+    // Get the credential using the JWT token (user-scoped)
+    let credential = match state
+        .database
+        .get_provider_credential(token, credential_id)
+        .await
+    {
         Ok(Some(c)) => c,
         Ok(None) => {
             warn!(credential_id, "credential not found for model sync");
@@ -23,7 +29,7 @@ pub async fn run_sync(state: Arc<AppState>, credential_id: &str) {
 
     if let Err(e) = state
         .database
-        .set_credential_sync_status(credential_id, "syncing", None)
+        .set_credential_sync_status(token, credential_id, "syncing", None)
         .await
     {
         warn!(credential_id, error = %e, "failed to set sync_status=syncing");
@@ -38,7 +44,7 @@ pub async fn run_sync(state: Arc<AppState>, credential_id: &str) {
             warn!(credential_id, error = %e, "failed to decrypt API key for sync");
             let _ = state
                 .database
-                .set_credential_sync_status(credential_id, "failed", Some(e.to_string()))
+                .set_credential_sync_status(token, credential_id, "failed", Some(e.to_string()))
                 .await;
             return;
         }
@@ -55,24 +61,24 @@ pub async fn run_sync(state: Arc<AppState>, credential_id: &str) {
             );
             let _ = state
                 .database
-                .set_credential_sync_status(credential_id, "failed", Some(e.to_string()))
+                .set_credential_sync_status(token, credential_id, "failed", Some(e.to_string()))
                 .await;
             return;
         }
     };
 
-    let user_id = credential.user.clone();
     let count = models.len();
 
+    // sync_models now takes token instead of user_id
     if let Err(e) = state
         .database
-        .sync_models(credential_id, user_id, models)
+        .sync_models(token, credential_id, models)
         .await
     {
         warn!(credential_id, error = %e, "failed to persist synced models");
         let _ = state
             .database
-            .set_credential_sync_status(credential_id, "failed", Some(e.to_string()))
+            .set_credential_sync_status(token, credential_id, "failed", Some(e.to_string()))
             .await;
         return;
     }

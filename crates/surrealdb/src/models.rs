@@ -242,24 +242,40 @@ impl fmt::Debug for CreatedVirtualApiKey {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
-pub struct VerifiedVirtualApiKey {
-    pub key: VirtualApiKey,
-    pub user_id: RecordId,
+#[allow(clippy::struct_excessive_bools)]
+pub struct RouteModelInfo {
+    pub alias: String,
+    pub provider: String,
+    pub upstream_model: String,
+    pub context_window_tokens: i64,
+    pub max_output_tokens: i64,
+    pub supports_streaming: bool,
+    pub supports_thinking: bool,
+    pub thinking_required: bool,
+    pub supports_temperature: bool,
+    pub temperature_fixed_to: Option<f64>,
+    pub temperature_min: Option<f64>,
+    pub temperature_max: Option<f64>,
+    pub supports_top_p: bool,
+    pub supports_system_messages: bool,
+    pub supports_tools: bool,
+    pub supports_vision: bool,
+    pub supports_json_mode: bool,
+    pub supports_parallel_tool_calls: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct ResolvedProxyRoute {
-    pub user: User,
-    pub key: VirtualApiKey,
-    pub model: ModelCatalogEntry,
-    pub provider_credential: ProviderCredential,
+    pub virtual_key_id: RecordId,
+    pub user_id: RecordId,
+    pub model: RouteModelInfo,
+    pub provider_credential_id: RecordId,
+    pub provider: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct RequestLogInput {
     pub request_id: String,
-    pub user_id: String,
-    pub virtual_api_key_id: Option<String>,
     pub model_alias: String,
     pub provider: String,
     pub upstream_model: String,

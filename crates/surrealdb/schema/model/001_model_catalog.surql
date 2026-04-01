@@ -1,11 +1,14 @@
-DEFINE TABLE IF NOT EXISTS model_catalog SCHEMAFULL
+DEFINE TABLE OVERWRITE model_catalog SCHEMAFULL
     PERMISSIONS
         FOR select
-            WHERE user = $auth.id
-        FOR create, update, delete
-            NONE;
+            WHERE (user = $auth.id AND $access = "account")
+               OR ($access = "virtual_key_access" AND user = $auth.user)
+        FOR update, delete
+            WHERE user = $auth.id AND $access = "account"
+        FOR create
+            WHERE user = $auth.id AND $access = "account";
 
--- Ownership (populated by background sync using root client)
+-- Ownership (populated by sync function using user JWT)
 DEFINE FIELD IF NOT EXISTS user ON TABLE model_catalog TYPE record<user>;
 DEFINE FIELD IF NOT EXISTS provider_credential ON TABLE model_catalog TYPE record<provider_credential>;
 
@@ -38,6 +41,6 @@ DEFINE FIELD IF NOT EXISTS enabled ON TABLE model_catalog TYPE bool DEFAULT true
 DEFINE FIELD IF NOT EXISTS created_at ON TABLE model_catalog TYPE datetime VALUE time::now() READONLY;
 DEFINE FIELD IF NOT EXISTS updated_at ON TABLE model_catalog TYPE datetime VALUE time::now();
 
--- Alias is unique per user (not globally — different users can have same alias)
+-- Alias is unique per user (not globally - different users can have same alias)
 DEFINE INDEX IF NOT EXISTS model_catalog_user_alias_unique
     ON TABLE model_catalog FIELDS user, alias UNIQUE;

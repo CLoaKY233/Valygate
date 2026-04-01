@@ -5,6 +5,12 @@ pub enum DatabaseError {
     #[error("invalid database configuration: {0}")]
     InvalidConfig(String),
 
+    #[error("database service authentication failed: {0}")]
+    ServiceAuth(String),
+
+    #[error("provider secret fetch failed: {0}")]
+    SecretFetch(String),
+
     #[error("not found: {0}")]
     NotFound(String),
 

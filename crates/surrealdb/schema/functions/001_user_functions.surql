@@ -1,0 +1,18 @@
+-- User Functions
+-- PERMISSIONS WHERE $auth != NONE: $auth.id IS available inside the function body
+
+DEFINE FUNCTION OVERWRITE fn::get_current_user() {
+    LET $user = (SELECT * FROM $auth.id)[0];
+    IF $user = NONE {
+        THROW "authenticated user not found";
+    };
+    IF $user.enabled = false {
+        THROW "account is disabled";
+    };
+    RETURN $user;
+} PERMISSIONS WHERE $auth != NONE AND $access = "account";
+
+DEFINE FUNCTION OVERWRITE fn::update_profile($changed_name: string) {
+    UPDATE user SET name = $changed_name WHERE id = $auth.id;
+    RETURN (SELECT id, * FROM user WHERE id = $auth.id)[0];
+} PERMISSIONS WHERE $auth != NONE AND $access = "account";

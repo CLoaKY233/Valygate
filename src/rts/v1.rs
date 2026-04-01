@@ -294,9 +294,10 @@ async fn create_provider(
 
     // Spawn background model discovery — does not block the response
     let state_clone = Arc::clone(&state);
+    let token_clone = token.to_string();
     let credential_id = credential.id.to_sql();
     tokio::spawn(async move {
-        crate::svc::discovery::run_sync(state_clone, &credential_id).await;
+        crate::svc::discovery::run_sync(state_clone, &token_clone, &credential_id).await;
     });
 
     Ok(Json(map_provider(&credential)))
@@ -325,7 +326,7 @@ async fn get_provider(
                 provider_id = %provider_id,
                 "get_provider failed"
             );
-            internal_error(error)
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
@@ -364,7 +365,7 @@ async fn update_provider(
                 provider_id = %provider_id,
                 "update_provider failed"
             );
-            internal_error(error)
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
@@ -434,18 +435,19 @@ async fn sync_provider(
     // Mark as syncing immediately
     state
         .database
-        .set_credential_sync_status(&credential_id, "syncing", None)
+        .set_credential_sync_status(token, &credential_id, "syncing", None)
         .await
         .map_err(|error| {
             error!(error = %error, credential_id = %credential_id, "sync_provider: failed to set status");
             internal_error(error)
         })?;
 
-    // Spawn background task
+    // Spawn background task - need to clone token for the async task
     let state_clone = Arc::clone(&state);
+    let token_clone = token.to_string();
     let cid = credential_id.clone();
     tokio::spawn(async move {
-        crate::svc::discovery::run_sync(state_clone, &cid).await;
+        crate::svc::discovery::run_sync(state_clone, &token_clone, &cid).await;
     });
 
     Ok(StatusCode::ACCEPTED)
@@ -483,7 +485,7 @@ async fn list_provider_models(
 
     let models = state
         .database
-        .list_models_for_credential(&provider_id)
+        .list_models_for_credential(token, &provider_id)
         .await
         .map_err(|error| {
             error!(
@@ -540,10 +542,7 @@ async fn create_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), "create_virtual_key failed");
-            match error {
-                valymux_surrealdb::DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
-                other => internal_error(other),
-            }
+            map_database_error(error)
         })?;
     Ok(Json(CreateVirtualKeyResponse {
         key: map_virtual_key(&created.record),
@@ -596,10 +595,7 @@ async fn update_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key failed");
-            match error {
-                valymux_surrealdb::DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
-                other => internal_error(other),
-            }
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
@@ -655,7 +651,7 @@ async fn get_model(
     debug!(token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model request received");
     let model = state
         .database
-        .get_model_by_alias_for_user(token, &alias)
+        .get_model_by_alias(token, &alias)
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model failed");
@@ -729,6 +725,73 @@ fn extract_bearer(headers: &HeaderMap) -> Result<&str, AppError> {
 fn internal_error(error: impl std::fmt::Display) -> AppError {
     error!(error = %error, "internal handler error");
     AppError::Internal(anyhow::anyhow!(error.to_string()))
+}
+
+fn map_database_error(error: DatabaseError) -> AppError {
+    match error {
+        DatabaseError::NotFound(msg) => AppError::NotFound(msg),
+        DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
+        DatabaseError::SecretFetch(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::ServiceAuth(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::SchemaBootstrap(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::Crypto(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::Database(inner) => classify_database_message(inner.to_string()),
+    }
+}
+
+fn classify_database_message(message: String) -> AppError {
+    let lower = message.to_lowercase();
+
+    if lower.contains("invalid or expired virtual api key")
+        || lower.contains("no record was returned")
+        || lower.contains("invalidtoken")
+    {
+        return AppError::Unauthorized("Invalid or expired credentials".into());
+    }
+
+    if lower.contains("not allowed to use this model")
+        || lower.contains("model alias(es) not found in your catalog")
+        || lower.contains("expected `record<provider_credential>`")
+        || lower.contains("expected `record<virtual_api_key>`")
+    {
+        return AppError::BadRequest(message);
+    }
+
+    if lower.contains("requested model not found in catalog")
+        || lower.contains("provider credential not found or access denied")
+        || lower.contains("provider credential not found or disabled")
+    {
+        return AppError::NotFound(message);
+    }
+
+    internal_error(message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_virtual_key_scope_violation_as_bad_request() {
+        let error = classify_database_message(
+            "An error occurred: virtual API key is not allowed to use this model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn classifies_missing_proxy_auth_record_as_unauthorized() {
+        let error = classify_database_message("No record was returned".into());
+        assert!(matches!(error, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn classifies_cross_user_provider_update_as_not_found() {
+        let error = classify_database_message(
+            "An error occurred: provider credential not found or access denied".into(),
+        );
+        assert!(matches!(error, AppError::NotFound(_)));
+    }
 }
 
 fn token_fingerprint(token: &str) -> String {

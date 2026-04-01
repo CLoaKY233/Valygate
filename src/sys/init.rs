@@ -3,7 +3,7 @@ use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tracing::info;
+use tracing::{info, warn};
 use valymux_surrealdb::Database;
 
 use super::{config::AppConfig, state::AppState};
@@ -14,6 +14,7 @@ use super::{config::AppConfig, state::AppState};
 /// - HTTP timeout values are invalid
 /// - TCP listener fails to bind
 /// - HTTP client fails to build
+/// - Database configuration is invalid
 pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
     let config = AppConfig::from_env()?;
 
@@ -45,15 +46,22 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
         .build()
         .context("Failed to build HTTP client")?;
 
-    let database = Database::connect(config.database_config())
-        .await
-        .context("Failed to connect to SurrealDB")?;
-    info!("Connected to SurrealDB");
-    database
-        .bootstrap()
-        .await
-        .context("Failed to bootstrap SurrealDB schema")?;
-    info!("SurrealDB schema bootstrapped");
+    // Create Database instance - NO connection or bootstrap needed.
+    // Schema must be applied manually via Surrealist/CLI before server startup.
+    let database_config = config.database_config();
+    let database =
+        Database::new(database_config.clone()).context("Failed to create Database instance")?;
+    if database_config.has_service_credentials() {
+        database
+            .initialize_runtime()
+            .await
+            .context("Failed to authenticate backend service database client")?;
+    } else {
+        warn!(
+            "VALYMUX_DB_SERVICE_KEY is not set; control-plane routes will work, but proxy secret fetching will fail until the backend-service bearer grant is configured"
+        );
+    }
+    info!("Database configuration validated");
 
     let state = Arc::new(AppState {
         config,
