@@ -35,6 +35,10 @@ impl CanonicalChatRequest {
             .and_then(Value::take_object)
             .unwrap_or_default();
 
+        let max_tokens = read_optional_non_negative_i64(&payload, "max_tokens")?;
+        let max_completion_tokens =
+            read_optional_non_negative_i64(&payload, "max_completion_tokens")?;
+
         Ok(Self {
             model,
             messages: payload
@@ -47,8 +51,8 @@ impl CanonicalChatRequest {
                 .unwrap_or(false),
             temperature: payload.get("temperature").and_then(Value::as_f64),
             top_p: payload.get("top_p").and_then(Value::as_f64),
-            max_tokens: payload.get("max_tokens").and_then(Value::as_i64),
-            max_completion_tokens: payload.get("max_completion_tokens").and_then(Value::as_i64),
+            max_tokens,
+            max_completion_tokens,
             stop: payload.get("stop").cloned(),
             presence_penalty: payload.get("presence_penalty").and_then(Value::as_f64),
             frequency_penalty: payload.get("frequency_penalty").and_then(Value::as_f64),
@@ -76,5 +80,39 @@ impl TakeObject for Value {
             Value::Object(map) => Some(map),
             _ => None,
         }
+    }
+}
+
+fn read_optional_non_negative_i64(payload: &Value, field: &str) -> Result<Option<i64>> {
+    let Some(value) = payload.get(field) else {
+        return Ok(None);
+    };
+
+    let parsed = value
+        .as_i64()
+        .ok_or_else(|| anyhow!("`{field}` must be an integer"))?;
+
+    if parsed < 0 {
+        return Err(anyhow!("`{field}` must be non-negative"));
+    }
+
+    Ok(Some(parsed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CanonicalChatRequest;
+    use serde_json::json;
+
+    #[test]
+    fn rejects_negative_max_tokens() {
+        let payload = json!({
+            "model": "google-genai/gemini-2.5-flash",
+            "messages": [{"role":"user","content":"hi"}],
+            "max_tokens": -5
+        });
+
+        let error = CanonicalChatRequest::from_value(payload).unwrap_err();
+        assert_eq!(error.to_string(), "`max_tokens` must be non-negative");
     }
 }

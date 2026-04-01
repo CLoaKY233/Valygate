@@ -47,7 +47,7 @@ pub fn router() -> Router<Arc<AppState>> {
                 .delete(delete_virtual_key),
         )
         .route("/models", get(list_models))
-        .route("/models/{alias}", get(get_model))
+        .route("/models/{*alias}", get(get_model))
         .route("/v1/chat/completions", post(chat_completions))
 }
 
@@ -647,6 +647,7 @@ async fn get_model(
     auth: RequireAuth,
     Path(alias): Path<String>,
 ) -> Result<Json<ModelResponse>, AppError> {
+    let alias = alias.trim_start_matches('/').to_string();
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model request received");
     let model = state
@@ -767,33 +768,6 @@ fn classify_database_message(message: String) -> AppError {
     internal_error(message)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classifies_virtual_key_scope_violation_as_bad_request() {
-        let error = classify_database_message(
-            "An error occurred: virtual API key is not allowed to use this model".into(),
-        );
-        assert!(matches!(error, AppError::BadRequest(_)));
-    }
-
-    #[test]
-    fn classifies_missing_proxy_auth_record_as_unauthorized() {
-        let error = classify_database_message("No record was returned".into());
-        assert!(matches!(error, AppError::Unauthorized(_)));
-    }
-
-    #[test]
-    fn classifies_cross_user_provider_update_as_not_found() {
-        let error = classify_database_message(
-            "An error occurred: provider credential not found or access denied".into(),
-        );
-        assert!(matches!(error, AppError::NotFound(_)));
-    }
-}
-
 fn token_fingerprint(token: &str) -> String {
     let hash = Sha256::digest(token.as_bytes());
     hex::encode(&hash[..8])
@@ -864,5 +838,38 @@ fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
         supports_vision: model.supports_vision,
         supports_json_mode: model.supports_json_mode,
         supports_parallel_tool_calls: model.supports_parallel_tool_calls,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_virtual_key_scope_violation_as_bad_request() {
+        let error = classify_database_message(
+            "An error occurred: virtual API key is not allowed to use this model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn classifies_missing_proxy_auth_record_as_unauthorized() {
+        let error = classify_database_message("No record was returned".into());
+        assert!(matches!(error, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn classifies_cross_user_provider_update_as_not_found() {
+        let error = classify_database_message(
+            "An error occurred: provider credential not found or access denied".into(),
+        );
+        assert!(matches!(error, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn normalizes_wildcard_model_alias_path() {
+        let alias = "/google-genai/gemini-2.5-flash".trim_start_matches('/');
+        assert_eq!(alias, "google-genai/gemini-2.5-flash");
     }
 }

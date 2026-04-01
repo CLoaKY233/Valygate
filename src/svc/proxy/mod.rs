@@ -342,25 +342,6 @@ fn classify_proxy_database_message(message: String) -> AppError {
     internal_error(message)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn classifies_virtual_key_auth_failures_as_unauthorized() {
-        let error = classify_proxy_database_message("No record was returned".into());
-        assert!(matches!(error, AppError::Unauthorized(_)));
-    }
-
-    #[test]
-    fn classifies_scoped_model_rejections_as_bad_request() {
-        let error = classify_proxy_database_message(
-            "An error occurred: virtual API key is not allowed to use this model".into(),
-        );
-        assert!(matches!(error, AppError::BadRequest(_)));
-    }
-}
-
 async fn persist_request_log_or_warn(session: &ProxySession, log: RequestLogInput) {
     let request_id = log.request_id.clone();
     let model_alias = log.model_alias.clone();
@@ -391,5 +372,24 @@ fn upstream_status_code_or_warn(status_code: i64, upstream: &str) -> StatusCode 
             upstream, "invalid upstream status code, falling back to 502"
         );
         StatusCode::BAD_GATEWAY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_virtual_key_auth_failures_as_unauthorized() {
+        let error = classify_proxy_database_message("No record was returned".into());
+        assert!(matches!(error, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn classifies_scoped_model_rejections_as_bad_request() {
+        let error = classify_proxy_database_message(
+            "An error occurred: virtual API key is not allowed to use this model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
     }
 }
