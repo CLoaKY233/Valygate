@@ -774,23 +774,48 @@ fn classify_database_message(message: String) -> AppError {
         return AppError::Unauthorized("Invalid or expired credentials".into());
     }
 
-    if lower.contains("not allowed to use this model")
-        || lower.contains("model alias(es) not found in your catalog")
-        || lower.contains("virtual api key has no route configured for this model")
-        || lower.contains("provider credential does not support model alias")
-        || lower.contains("provider credential does not support requested model")
-        || lower.contains("route alias is outside virtual key scope")
-        || lower.contains("expected `record<provider_credential>`")
-        || lower.contains("expected `record<virtual_api_key>`")
-    {
-        return AppError::BadRequest(message);
+    if lower.contains("not allowed to use this model") {
+        return AppError::BadRequest("Virtual key is not allowed to use this model".into());
     }
 
-    if lower.contains("requested model not found in catalog")
-        || lower.contains("provider credential not found or access denied")
-        || lower.contains("provider credential not found or disabled")
+    if lower.contains("model alias(es) not found in your catalog") {
+        return AppError::BadRequest("One or more model aliases were not found in your catalog".into());
+    }
+
+    if lower.contains("virtual api key has no route configured for this model") {
+        return AppError::BadRequest("No route configured for this model on this virtual key".into());
+    }
+
+    if lower.contains("provider credential does not support model alias")
+        || lower.contains("provider credential does not support requested model")
     {
-        return AppError::NotFound(message);
+        return AppError::BadRequest(
+            "Provider credential does not support the requested model".into(),
+        );
+    }
+
+    if lower.contains("route alias is outside virtual key scope") {
+        return AppError::BadRequest("Route model alias is outside the virtual key's allowed scope".into());
+    }
+
+    if lower.contains("expected `record<provider_credential>`") {
+        return AppError::BadRequest("Invalid provider credential ID".into());
+    }
+
+    if lower.contains("expected `record<virtual_api_key>`") {
+        return AppError::BadRequest("Invalid virtual key ID".into());
+    }
+
+    if lower.contains("requested model not found in catalog") {
+        return AppError::NotFound("Model not found".into());
+    }
+
+    if lower.contains("provider credential not found or access denied") {
+        return AppError::NotFound("Provider credential not found or access denied".into());
+    }
+
+    if lower.contains("provider credential not found or disabled") {
+        return AppError::NotFound("Provider credential not found or disabled".into());
     }
 
     internal_error(message)

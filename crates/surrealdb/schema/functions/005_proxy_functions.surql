@@ -24,6 +24,17 @@ DEFINE FUNCTION OVERWRITE fn::proxy_resolve_route($model_alias: string) {
         LIMIT 1
     )[0];
 
+    LET $route = IF $route = NONE {
+        (
+            SELECT * FROM virtual_key_route
+            WHERE in = $key.id
+              AND model_alias = "*"
+            LIMIT 1
+        )[0]
+    } ELSE {
+        $route
+    };
+
     IF $route = NONE {
         THROW "virtual API key has no route configured for this model";
     };

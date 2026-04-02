@@ -39,12 +39,17 @@ impl CanonicalChatRequest {
         let max_completion_tokens =
             read_optional_non_negative_i64(&payload, "max_completion_tokens")?;
 
+        let messages = payload
+            .get("messages")
+            .cloned()
+            .ok_or_else(|| anyhow!("`messages` is required"))?;
+        if matches!(&messages, Value::Array(arr) if arr.is_empty()) {
+            anyhow::bail!("`messages` must contain at least one message");
+        }
+
         Ok(Self {
             model,
-            messages: payload
-                .get("messages")
-                .cloned()
-                .ok_or_else(|| anyhow!("`messages` is required"))?,
+            messages,
             stream: payload
                 .get("stream")
                 .and_then(Value::as_bool)
@@ -128,6 +133,20 @@ mod tests {
         assert_eq!(
             error.to_string(),
             "`max_completion_tokens` must be non-negative"
+        );
+    }
+
+    #[test]
+    fn rejects_empty_messages() {
+        let payload = json!({
+            "model": "google-genai/gemini-2.5-flash",
+            "messages": []
+        });
+
+        let error = CanonicalChatRequest::from_value(payload).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "`messages` must contain at least one message"
         );
     }
 

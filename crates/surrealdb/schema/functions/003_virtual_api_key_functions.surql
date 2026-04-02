@@ -12,27 +12,7 @@ DEFINE FUNCTION OVERWRITE fn::get_virtual_api_key($id: record<virtual_api_key>) 
                     out.provider AS provider,
                     out.label AS provider_label
                 FROM virtual_key_route
-                WHERE in = id
-                ORDER BY model_alias ASC
-            ) AS routes
-        FROM $id
-        WHERE user = $auth.id
-    )[0];
-} PERMISSIONS WHERE $auth != NONE AND $access = "account";
-
-DEFINE FUNCTION OVERWRITE fn::get_virtual_api_key($id: record<virtual_api_key>) {
-    RETURN (
-        SELECT
-            *,
-            (
-                SELECT VALUE {
-                    model_alias: model_alias,
-                    provider_credential_id: out,
-                    provider: out.provider,
-                    provider_label: out.label
-                }
-                FROM virtual_key_route
-                WHERE in = id
+                WHERE in = $id
                 ORDER BY model_alias ASC
             ) AS routes
         FROM $id
@@ -81,30 +61,32 @@ DEFINE FUNCTION OVERWRITE fn::validate_virtual_key_routes($routes: array, $allow
             THROW "provider credential not found or access denied";
         };
 
-        IF array::len($allowed_models) > 0 AND !($route.model_alias INSIDE $allowed_models) {
-            THROW string::concat(
-                "route alias is outside virtual key scope: ",
-                $route.model_alias
-            );
-        };
+        IF $route.model_alias != "*" {
+            IF array::len($allowed_models) > 0 AND !($route.model_alias INSIDE $allowed_models) {
+                THROW string::concat(
+                    "route alias is outside virtual key scope: ",
+                    $route.model_alias
+                );
+            };
 
-        LET $model = (SELECT * FROM model_definition WHERE alias = $route.model_alias LIMIT 1)[0];
-        IF $model = NONE {
-            THROW string::concat("model alias not found: ", $route.model_alias);
-        };
+            LET $model = (SELECT * FROM model_definition WHERE alias = $route.model_alias LIMIT 1)[0];
+            IF $model = NONE {
+                THROW string::concat("model alias not found: ", $route.model_alias);
+            };
 
-        LET $support = (
-            SELECT * FROM supports
-            WHERE in = $route.provider_credential_id
-              AND out = $model.id
-            LIMIT 1
-        )[0];
+            LET $support = (
+                SELECT * FROM supports
+                WHERE in = $route.provider_credential_id
+                  AND out = $model.id
+                LIMIT 1
+            )[0];
 
-        IF $support = NONE {
-            THROW string::concat(
-                "provider credential does not support model alias: ",
-                $route.model_alias
-            );
+            IF $support = NONE {
+                THROW string::concat(
+                    "provider credential does not support model alias: ",
+                    $route.model_alias
+                );
+            };
         };
     };
 

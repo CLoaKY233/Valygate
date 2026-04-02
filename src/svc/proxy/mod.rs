@@ -84,7 +84,13 @@ impl ProxyExecutor {
             .http_client
             .execute(request)
             .await
-            .map_err(|error| AppError::Internal(error.into()))?;
+            .map_err(|error| {
+                if error.is_timeout() {
+                    AppError::ProviderTimeout
+                } else {
+                    AppError::Internal(error.into())
+                }
+            })?;
 
         let status_code = i64::from(upstream.status().as_u16());
         let ms = started_at.elapsed().as_millis();
@@ -331,14 +337,21 @@ fn classify_proxy_database_message(message: String) -> AppError {
     }
 
     if lower.contains("not allowed to use this model") {
-        return AppError::BadRequest(message);
+        return AppError::BadRequest("Virtual key is not allowed to use this model".into());
     }
 
-    if lower.contains("requested model not found in catalog")
-        || lower.contains("provider credential is disabled or not found")
+    if lower.contains("virtual api key has no route configured for this model") {
+        return AppError::NotFound("No route configured for this model on this virtual key".into());
+    }
+
+    if lower.contains("requested model not found in catalog") {
+        return AppError::NotFound("Model not found".into());
+    }
+
+    if lower.contains("provider credential is disabled or not found")
         || lower.contains("provider credential not found or disabled")
     {
-        return AppError::NotFound(message);
+        return AppError::NotFound("Provider credential is disabled or not found".into());
     }
 
     internal_error(message)
@@ -393,5 +406,13 @@ mod tests {
             "An error occurred: virtual API key is not allowed to use this model".into(),
         );
         assert!(matches!(error, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn classifies_missing_route_as_not_found() {
+        let error = classify_proxy_database_message(
+            "virtual API key has no route configured for this model".into(),
+        );
+        assert!(matches!(error, AppError::NotFound(_)));
     }
 }
