@@ -97,20 +97,19 @@ pub struct VirtualApiKey {
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub routes: Vec<VirtualKeyRoute>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct ModelCatalogEntry {
+pub struct ModelDefinition {
     pub id: RecordId,
-    pub user: RecordId,
-    pub provider_credential: RecordId,
     pub alias: String,
     pub provider: String,
     pub upstream_model: String,
     pub display_name: String,
     pub description: Option<String>,
-    pub enabled: bool,
     pub context_window_tokens: i64,
     pub max_output_tokens: i64,
     pub supports_streaming: bool,
@@ -128,6 +127,14 @@ pub struct ModelCatalogEntry {
     pub supports_parallel_tool_calls: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+pub struct VirtualKeyRoute {
+    pub model_alias: String,
+    pub provider_credential_id: RecordId,
+    pub provider: String,
+    pub provider_label: String,
 }
 
 /// Input for a single discovered model to be synced into the catalog.
@@ -215,6 +222,7 @@ pub struct CreateVirtualApiKeyInput {
     pub allowed_models: Vec<String>,
     pub tags: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub routes: Vec<VirtualKeyRouteInput>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
@@ -224,6 +232,13 @@ pub struct UpdateVirtualApiKeyInput {
     pub tags: Vec<String>,
     pub enabled: bool,
     pub expires_at: Option<DateTime<Utc>>,
+    pub routes: Vec<VirtualKeyRouteInput>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+pub struct VirtualKeyRouteInput {
+    pub model_alias: String,
+    pub provider_credential_id: RecordId,
 }
 
 #[derive(Clone, Serialize, Deserialize, SurrealValue)]

@@ -115,4 +115,31 @@ mod tests {
         let error = CanonicalChatRequest::from_value(payload).unwrap_err();
         assert_eq!(error.to_string(), "`max_tokens` must be non-negative");
     }
+
+    #[test]
+    fn rejects_negative_max_completion_tokens() {
+        let payload = json!({
+            "model": "google-genai/gemini-2.5-flash",
+            "messages": [{"role":"user","content":"hi"}],
+            "max_completion_tokens": -10
+        });
+
+        let error = CanonicalChatRequest::from_value(payload).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            "`max_completion_tokens` must be non-negative"
+        );
+    }
+
+    #[test]
+    fn rejects_non_integer_max_tokens() {
+        let payload = json!({
+            "model": "google-genai/gemini-2.5-flash",
+            "messages": [{"role":"user","content":"hi"}],
+            "max_tokens": "not-a-number"
+        });
+
+        let error = CanonicalChatRequest::from_value(payload).unwrap_err();
+        assert_eq!(error.to_string(), "`max_tokens` must be an integer");
+    }
 }

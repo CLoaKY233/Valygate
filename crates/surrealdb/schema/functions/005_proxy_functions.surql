@@ -12,24 +12,40 @@ DEFINE FUNCTION OVERWRITE fn::proxy_resolve_route($model_alias: string) {
         THROW "virtual API key is not allowed to use this model";
     };
 
-    LET $model = (
-        SELECT id, * FROM model_catalog
-        WHERE user = $key.user
-          AND alias = $model_alias
-          AND enabled = true
-        LIMIT 1
-    )[0];
-
+    LET $model = (SELECT * FROM model_definition WHERE alias = $model_alias LIMIT 1)[0];
     IF $model = NONE {
         THROW "requested model not found in catalog";
     };
 
+    LET $route = (
+        SELECT * FROM virtual_key_route
+        WHERE in = $key.id
+          AND model_alias = $model_alias
+        LIMIT 1
+    )[0];
+
+    IF $route = NONE {
+        THROW "virtual API key has no route configured for this model";
+    };
+
     LET $cred = (
-        SELECT * FROM $model.provider_credential
+        SELECT * FROM $route.out
         WHERE enabled = true
+          AND user = $key.user
+        LIMIT 1
     )[0];
     IF $cred = NONE {
         THROW "provider credential is disabled or not found";
+    };
+
+    LET $support = (
+        SELECT * FROM supports
+        WHERE in = $cred.id
+          AND out = $model.id
+        LIMIT 1
+    )[0];
+    IF $support = NONE {
+        THROW "provider credential does not support requested model";
     };
 
     UPDATE $auth SET last_used_at = time::now();

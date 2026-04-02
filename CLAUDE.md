@@ -106,12 +106,14 @@ Implementation:
 ## Build, Test, and Development Commands
 
 **Running the server:**
+
 ```bash
 cargo run                    # Start API on 0.0.0.0:3000 (see .env.example)
 cargo run --release         # Release-optimized binary
 ```
 
 **Testing:**
+
 ```bash
 cargo test                   # Run all tests (unit + integration)
 cargo test --lib            # Unit tests only
@@ -120,6 +122,7 @@ cargo test test_name        # Run a single test by name
 ```
 
 **Code quality:**
+
 ```bash
 cargo clippy --all-targets --all-features -- -D warnings  # Lint check (required before PR)
 cargo fmt --all             # Format all code (required before PR)
@@ -127,6 +130,7 @@ cargo fmt --all -- --check  # Check formatting without modifying
 ```
 
 **Dependency & security audits:**
+
 ```bash
 cargo audit                  # Check for known vulnerabilities
 cargo deny check             # Check license policy and dependency security
@@ -134,6 +138,7 @@ cargo update                 # Update dependencies (monthly recommended)
 ```
 
 **Release build:**
+
 ```bash
 cargo build --release        # Production binary (target/release/valymux)
 ```
@@ -257,7 +262,7 @@ See `documents/01_MVP_DEFINITION.md` and `documents/04_ROADMAP_30_DAYS.md` for d
 - Examples:
   - `Fix: Handle Anthropic streaming edge case`
   - `Feat: Add Google Gemini provider adapter`
-  - `Chore: Update Rust toolchain to 1.94`
+  - `Chore: Update Rust toolchain to 1.85`
 
 **Pull Requests:**
 - Follow `.github/PULL_REQUEST_TEMPLATE.md` — summary, type, change list, testing notes

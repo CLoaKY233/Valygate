@@ -13,6 +13,5 @@ DEFINE FUNCTION OVERWRITE fn::get_current_user() {
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
 DEFINE FUNCTION OVERWRITE fn::update_profile($changed_name: string) {
-    UPDATE user SET name = $changed_name WHERE id = $auth.id;
-    RETURN (SELECT id, * FROM user WHERE id = $auth.id)[0];
+    RETURN (UPDATE user SET name = $changed_name WHERE id = $auth.id RETURN AFTER)[0];
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";

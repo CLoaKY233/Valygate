@@ -83,6 +83,14 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
         return;
     }
 
+    if let Err(e) = state
+        .database
+        .set_credential_sync_status(token, credential_id, "completed", None)
+        .await
+    {
+        warn!(credential_id, error = %e, "failed to set sync_status=completed");
+    }
+
     info!(credential_id, count, "model sync completed");
 }
 

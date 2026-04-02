@@ -10,14 +10,15 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use surrealdb_types::ToSql;
+use surrealdb_types::{RecordId, ToSql};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use valymux_core::error::AppError;
 use valymux_surrealdb::{
-    CreateProviderCredentialInput, CreateVirtualApiKeyInput, DatabaseError, ModelCatalogEntry,
+    CreateProviderCredentialInput, CreateVirtualApiKeyInput, DatabaseError, ModelDefinition,
     ProviderCredential, ProviderKind, SigninInput, SignupInput, UpdateProfileInput,
     UpdateProviderCredentialInput, UpdateVirtualApiKeyInput, User, VirtualApiKey,
+    VirtualKeyRouteInput,
 };
 
 use crate::{rts::extractors::RequireAuth, svc::proxy, sys::state::AppState};
@@ -89,6 +90,7 @@ struct VirtualKeyResponse {
     name: String,
     key_prefix: String,
     allowed_models: Vec<String>,
+    model_routes: Vec<VirtualKeyRouteResponse>,
     tags: Vec<String>,
     enabled: bool,
     expires_at: Option<String>,
@@ -156,6 +158,8 @@ struct CreateVirtualKeyRequest {
     #[serde(default)]
     allowed_models: Vec<String>,
     #[serde(default)]
+    model_routes: Vec<VirtualKeyRouteRequest>,
+    #[serde(default)]
     tags: Vec<String>,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -166,9 +170,25 @@ struct UpdateVirtualKeyRequest {
     #[serde(default)]
     allowed_models: Vec<String>,
     #[serde(default)]
+    model_routes: Vec<VirtualKeyRouteRequest>,
+    #[serde(default)]
     tags: Vec<String>,
     enabled: bool,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Deserialize)]
+struct VirtualKeyRouteRequest {
+    model_alias: String,
+    provider_credential_id: String,
+}
+
+#[derive(Serialize)]
+struct VirtualKeyRouteResponse {
+    model_alias: String,
+    provider_credential_id: String,
+    provider: String,
+    provider_label: String,
 }
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
@@ -528,6 +548,7 @@ async fn create_virtual_key(
 ) -> Result<Json<CreateVirtualKeyResponse>, AppError> {
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "create_virtual_key request received");
+    let routes = parse_virtual_key_routes(input.model_routes)?;
     let created = state
         .database
         .create_virtual_api_key(
@@ -535,6 +556,7 @@ async fn create_virtual_key(
             CreateVirtualApiKeyInput {
                 name: input.name,
                 allowed_models: input.allowed_models,
+                routes,
                 tags: input.tags,
                 expires_at: input.expires_at,
             },
@@ -579,6 +601,7 @@ async fn update_virtual_key(
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key request received");
+    let routes = parse_virtual_key_routes(input.model_routes)?;
     let key = state
         .database
         .update_virtual_api_key(
@@ -587,6 +610,7 @@ async fn update_virtual_key(
             UpdateVirtualApiKeyInput {
                 name: input.name,
                 allowed_models: input.allowed_models,
+                routes,
                 tags: input.tags,
                 enabled: input.enabled,
                 expires_at: input.expires_at,
@@ -731,7 +755,7 @@ fn internal_error(error: impl std::fmt::Display) -> AppError {
 fn map_database_error(error: DatabaseError) -> AppError {
     match error {
         DatabaseError::NotFound(msg) => AppError::NotFound(msg),
-        DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
+        DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
         DatabaseError::SecretFetch(msg) => AppError::Internal(anyhow::anyhow!(msg)),
         DatabaseError::ServiceAuth(msg) => AppError::Internal(anyhow::anyhow!(msg)),
         DatabaseError::SchemaBootstrap(msg) => AppError::Internal(anyhow::anyhow!(msg)),
@@ -752,6 +776,10 @@ fn classify_database_message(message: String) -> AppError {
 
     if lower.contains("not allowed to use this model")
         || lower.contains("model alias(es) not found in your catalog")
+        || lower.contains("virtual api key has no route configured for this model")
+        || lower.contains("provider credential does not support model alias")
+        || lower.contains("provider credential does not support requested model")
+        || lower.contains("route alias is outside virtual key scope")
         || lower.contains("expected `record<provider_credential>`")
         || lower.contains("expected `record<virtual_api_key>`")
     {
@@ -805,6 +833,16 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
         name: key.name.clone(),
         key_prefix: key.key_prefix.clone(),
         allowed_models: key.allowed_models.clone(),
+        model_routes: key
+            .routes
+            .iter()
+            .map(|route| VirtualKeyRouteResponse {
+                model_alias: route.model_alias.clone(),
+                provider_credential_id: route.provider_credential_id.to_sql(),
+                provider: route.provider.clone(),
+                provider_label: route.provider_label.clone(),
+            })
+            .collect(),
         tags: key.tags.clone(),
         enabled: key.enabled,
         expires_at: key.expires_at.map(|v| v.to_rfc3339()),
@@ -814,7 +852,7 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
     }
 }
 
-fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
+fn map_model(model: &ModelDefinition) -> ModelResponse {
     ModelResponse {
         id: model.id.to_sql(),
         alias: model.alias.clone(),
@@ -822,7 +860,7 @@ fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
         provider: model.provider.clone(),
         upstream_model: model.upstream_model.clone(),
         description: model.description.clone(),
-        enabled: model.enabled,
+        enabled: true,
         context_window_tokens: model.context_window_tokens,
         max_output_tokens: model.max_output_tokens,
         supports_streaming: model.supports_streaming,
@@ -839,6 +877,26 @@ fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
         supports_json_mode: model.supports_json_mode,
         supports_parallel_tool_calls: model.supports_parallel_tool_calls,
     }
+}
+
+fn parse_virtual_key_routes(
+    routes: Vec<VirtualKeyRouteRequest>,
+) -> Result<Vec<VirtualKeyRouteInput>, AppError> {
+    routes
+        .into_iter()
+        .map(|route| {
+            Ok(VirtualKeyRouteInput {
+                model_alias: route.model_alias,
+                provider_credential_id: RecordId::parse_simple(&route.provider_credential_id)
+                    .map_err(|_| {
+                        AppError::BadRequest(format!(
+                            "invalid provider credential id: {}",
+                            route.provider_credential_id
+                        ))
+                    })?,
+            })
+        })
+        .collect()
 }
 
 #[cfg(test)]

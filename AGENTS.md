@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -41,7 +41,7 @@ ValyMux is a Rust workspace with a binary crate (`src/`) and three library crate
 
 ### Proxy Request (Chat Completions)
 
-```
+```text
 POST /v1/chat/completions (Bearer token)
   → RequireAuth extractor validates virtual key
   → handler looks up provider credentials
@@ -162,7 +162,9 @@ cargo build --release        # Production binary (target/release/valymux)
 - `LOG_FORMAT` — Output format: `json` / `compact` / `pretty` (default `compact`)
 - `RUST_LOG` — Filter directive (default `valymux=info`). Examples: `valymux=debug`, `valymux=trace,tower_http=debug`
 - `HTTP_TIMEOUT_SECS` — Upstream request timeout (default `300`)
-- `SURREAL_URL`, `SURREAL_NAMESPACE`, `SURREAL_DATABASE`, `SURREAL_USERNAME`, `SURREAL_PASSWORD` — SurrealDB connection
+- `SURREAL_URL`, `SURREAL_NAMESPACE`, `SURREAL_DATABASE` — SurrealDB connection (required)
+- `SURREAL_USERNAME`, `SURREAL_PASSWORD` — SurrealDB credentials (optional; migration/bootstrap only)
+- `VALYMUX_DB_SERVICE_KEY` — Bearer key for backend_service DB access used by the proxy (required for proxy operations)
 - `SURREAL_ENCRYPTION_KEY` — 32-byte hex key for AES-256-GCM encryption of provider secrets (required, no default)
 
 ---

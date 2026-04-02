@@ -40,10 +40,10 @@ use crypto::{
 pub use error::DatabaseError;
 pub use models::{
     AuthSession, CreateProviderCredentialInput, CreateVirtualApiKeyInput, CreatedVirtualApiKey,
-    ModelCatalogEntry, ModelSyncInput, ProviderCredential, ProviderKind, RequestLog,
-    RequestLogInput, ResolvedProxyRoute, RouteModelInfo, SigninInput, SignupInput,
-    UpdateProfileInput, UpdateProviderCredentialInput, UpdateVirtualApiKeyInput, User,
-    VirtualApiKey,
+    ModelDefinition, ModelSyncInput, ProviderCredential, ProviderKind, RequestLog, RequestLogInput,
+    ResolvedProxyRoute, RouteModelInfo, SigninInput, SignupInput, UpdateProfileInput,
+    UpdateProviderCredentialInput, UpdateVirtualApiKeyInput, User, VirtualApiKey, VirtualKeyRoute,
+    VirtualKeyRouteInput,
 };
 
 /// Database facade with NO root client.
@@ -327,15 +327,15 @@ impl Database {
         let client = self.client_with_jwt(token).await?;
         let raw_key = generate_virtual_api_key()?;
 
-        // The function validates model aliases internally
         let created = client
-            .query("RETURN fn::create_virtual_api_key($name, $key_prefix, $key_hash, $allowed_models, $tags, $expires_at);")
+            .query("RETURN fn::create_virtual_api_key($name, $key_prefix, $key_hash, $allowed_models, $tags, $expires_at, $routes);")
             .bind(("name", input.name))
             .bind(("key_prefix", key_prefix(&raw_key)))
             .bind(("key_hash", hash_virtual_api_key(&raw_key)))
             .bind(("allowed_models", input.allowed_models))
             .bind(("tags", input.tags))
             .bind(("expires_at", input.expires_at))
+            .bind(("routes", input.routes))
             .await?
             .take::<Option<VirtualApiKey>>(0)?
             .ok_or_else(|| {
@@ -357,15 +357,15 @@ impl Database {
         let client = self.client_with_jwt(token).await?;
         let key_id = parse_thing(key_id)?;
 
-        // The function validates model aliases internally
         client
-            .query("RETURN fn::update_virtual_api_key($id, $name, $allowed_models, $tags, $enabled, $expires_at);")
+            .query("RETURN fn::update_virtual_api_key($id, $name, $allowed_models, $tags, $enabled, $expires_at, $routes);")
             .bind(("id", key_id))
             .bind(("name", input.name))
             .bind(("allowed_models", input.allowed_models))
             .bind(("tags", input.tags))
             .bind(("enabled", input.enabled))
             .bind(("expires_at", input.expires_at))
+            .bind(("routes", input.routes))
             .await?
             .take::<Option<VirtualApiKey>>(0)
             .map_err(Into::into)
@@ -392,12 +392,12 @@ impl Database {
     pub async fn list_usable_models(
         &self,
         token: &str,
-    ) -> Result<Vec<ModelCatalogEntry>, DatabaseError> {
+    ) -> Result<Vec<ModelDefinition>, DatabaseError> {
         let client = self.client_with_jwt(token).await?;
         client
             .query("RETURN fn::list_usable_models();")
             .await?
-            .take::<Vec<ModelCatalogEntry>>(0)
+            .take::<Vec<ModelDefinition>>(0)
             .map_err(Into::into)
     }
 
@@ -406,13 +406,13 @@ impl Database {
         &self,
         token: &str,
         alias: &str,
-    ) -> Result<Option<ModelCatalogEntry>, DatabaseError> {
+    ) -> Result<Option<ModelDefinition>, DatabaseError> {
         let client = self.client_with_jwt(token).await?;
         client
             .query("RETURN fn::get_model_by_alias($alias);")
             .bind(("alias", alias.to_string()))
             .await?
-            .take::<Option<ModelCatalogEntry>>(0)
+            .take::<Option<ModelDefinition>>(0)
             .map_err(Into::into)
     }
 
@@ -421,14 +421,14 @@ impl Database {
         &self,
         token: &str,
         credential_id: &str,
-    ) -> Result<Vec<ModelCatalogEntry>, DatabaseError> {
+    ) -> Result<Vec<ModelDefinition>, DatabaseError> {
         let client = self.client_with_jwt(token).await?;
         let cred_id = parse_thing(credential_id)?;
         client
             .query("RETURN fn::list_models_for_credential($cred_id);")
             .bind(("cred_id", cred_id))
             .await?
-            .take::<Vec<ModelCatalogEntry>>(0)
+            .take::<Vec<ModelDefinition>>(0)
             .map_err(Into::into)
     }
 

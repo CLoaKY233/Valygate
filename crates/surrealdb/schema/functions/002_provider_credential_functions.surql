@@ -48,7 +48,8 @@ DEFINE FUNCTION OVERWRITE fn::update_provider_credential(
             tags: $tags,
             enabled: $enabled,
             encrypted_api_key: $encrypted_api_key,
-            sync_status: "pending"
+            sync_status: "pending",
+            sync_error: NONE
         } WHERE user = $auth.id RETURN AFTER)[0];
         RETURN $updated;
     };
@@ -66,7 +67,8 @@ DEFINE FUNCTION OVERWRITE fn::delete_provider_credential($id: record<provider_cr
         RETURN NONE;
     };
 
-    DELETE model_catalog WHERE provider_credential = $id AND user = $auth.id;
+    DELETE supports WHERE in = $id;
+    DELETE virtual_key_route WHERE out = $id;
     DELETE $id WHERE user = $auth.id;
 
     RETURN $before;

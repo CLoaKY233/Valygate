@@ -62,7 +62,7 @@ impl ProxyExecutor {
             .database
             .fetch_proxy_provider_api_key(&route.provider_credential_id)
             .await
-            .map_err(internal_error)?;
+            .map_err(map_proxy_database_error)?;
         let adapter = provider_adapter(&route.model.provider)?;
         adapter
             .validate_request(&canonical_request, &route)
@@ -313,6 +313,8 @@ fn map_proxy_database_error(error: DatabaseError) -> AppError {
     match error {
         DatabaseError::NotFound(msg) => AppError::NotFound(msg),
         DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
+        DatabaseError::ServiceAuth(msg) => AppError::Unauthorized(msg),
+        DatabaseError::SecretFetch(inner) => internal_error(inner),
         DatabaseError::Database(inner) => classify_proxy_database_message(inner.to_string()),
         other => internal_error(other),
     }
