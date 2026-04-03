@@ -80,17 +80,13 @@ impl ProxyExecutor {
             )
             .json(&outbound_payload);
         let request = builder.build().map_err(|e| AppError::Internal(e.into()))?;
-        let upstream = state
-            .http_client
-            .execute(request)
-            .await
-            .map_err(|error| {
-                if error.is_timeout() {
-                    AppError::ProviderTimeout
-                } else {
-                    AppError::Internal(error.into())
-                }
-            })?;
+        let upstream = state.http_client.execute(request).await.map_err(|error| {
+            if error.is_timeout() {
+                AppError::ProviderTimeout
+            } else {
+                AppError::Internal(error.into())
+            }
+        })?;
 
         let status_code = i64::from(upstream.status().as_u16());
         let ms = started_at.elapsed().as_millis();

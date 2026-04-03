@@ -67,6 +67,11 @@ DEFINE FUNCTION OVERWRITE fn::delete_provider_credential($id: record<provider_cr
         RETURN NONE;
     };
 
+    UPDATE $id MERGE {
+        sync_status: "deleting",
+        sync_error: NONE
+    } WHERE user = $auth.id;
+
     DELETE supports WHERE in = $id;
     DELETE virtual_key_route WHERE out = $id;
     DELETE $id WHERE user = $auth.id;

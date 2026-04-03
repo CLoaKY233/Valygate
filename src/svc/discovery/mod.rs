@@ -6,6 +6,8 @@ use tracing::{info, warn};
 
 use crate::sys::state::AppState;
 
+const PROVIDER_SYNC_STATUS_DELETING: &str = "deleting";
+
 /// Runs a full model discovery sync for the given provider credential.
 /// Requires a JWT token since sync operations are now user-scoped.
 /// Updates sync_status on the credential throughout the process.
@@ -26,6 +28,14 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
             return;
         }
     };
+
+    if credential.sync_status == PROVIDER_SYNC_STATUS_DELETING {
+        info!(
+            credential_id,
+            "skipping model sync for credential marked deleting"
+        );
+        return;
+    }
 
     if let Err(e) = state
         .database
@@ -69,6 +79,14 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
 
     let count = models.len();
 
+    if !credential_is_active_for_sync(&state, token, credential_id).await {
+        info!(
+            credential_id,
+            "aborting model sync because credential was deleted"
+        );
+        return;
+    }
+
     // sync_models now takes token instead of user_id
     if let Err(e) = state
         .database
@@ -83,6 +101,14 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
         return;
     }
 
+    if !credential_is_active_for_sync(&state, token, credential_id).await {
+        info!(
+            credential_id,
+            "skipping sync completion because credential was deleted"
+        );
+        return;
+    }
+
     if let Err(e) = state
         .database
         .set_credential_sync_status(token, credential_id, "completed", None)
@@ -92,6 +118,21 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
     }
 
     info!(credential_id, count, "model sync completed");
+}
+
+async fn credential_is_active_for_sync(state: &AppState, token: &str, credential_id: &str) -> bool {
+    match state
+        .database
+        .get_provider_credential(token, credential_id)
+        .await
+    {
+        Ok(Some(credential)) => credential.sync_status != PROVIDER_SYNC_STATUS_DELETING,
+        Ok(None) => false,
+        Err(error) => {
+            warn!(credential_id, error = %error, "failed to re-check credential during sync");
+            false
+        }
+    }
 }
 
 async fn discover(

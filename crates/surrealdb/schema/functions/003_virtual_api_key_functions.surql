@@ -186,7 +186,22 @@ DEFINE FUNCTION OVERWRITE fn::update_virtual_api_key(
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
 DEFINE FUNCTION OVERWRITE fn::delete_virtual_api_key($id: record<virtual_api_key>) {
-    LET $before = (SELECT * FROM $id WHERE user = $auth.id)[0];
+    LET $before = (
+        SELECT
+            *,
+            (
+                SELECT
+                    model_alias,
+                    out AS provider_credential_id,
+                    out.provider AS provider,
+                    out.label AS provider_label
+                FROM virtual_key_route
+                WHERE in = $id
+                ORDER BY model_alias ASC
+            ) AS routes
+        FROM $id
+        WHERE user = $auth.id
+    )[0];
     IF $before = NONE {
         RETURN NONE;
     };

@@ -59,7 +59,11 @@ DEFINE FUNCTION OVERWRITE fn::sync_models(
 ) {
     LET $cred = (SELECT * FROM $cred_id WHERE user = $auth.id)[0];
     IF $cred = NONE {
-        THROW "credential not found or access denied";
+        RETURN 0;
+    };
+
+    IF $cred.sync_status = "deleting" {
+        RETURN 0;
     };
 
     DELETE supports WHERE in = $cred_id;
@@ -122,7 +126,11 @@ DEFINE FUNCTION OVERWRITE fn::set_credential_sync_status(
 ) {
     LET $cred = (SELECT * FROM $cred_id WHERE user = $auth.id)[0];
     IF $cred = NONE {
-        THROW "credential not found or access denied";
+        RETURN false;
+    };
+
+    IF $cred.sync_status = "deleting" {
+        RETURN false;
     };
 
     UPDATE $cred_id MERGE {

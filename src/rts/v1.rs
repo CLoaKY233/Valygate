@@ -23,6 +23,9 @@ use valymux_surrealdb::{
 
 use crate::{rts::extractors::RequireAuth, svc::proxy, sys::state::AppState};
 
+const DELETE_PROVIDER_CONFLICT_RETRIES: usize = 3;
+const DELETE_PROVIDER_CONFLICT_BACKOFF_MS: u64 = 50;
+
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/auth/signup", post(signup))
@@ -403,20 +406,45 @@ async fn delete_provider(
         provider_id = %provider_id,
         "delete_provider request received"
     );
-    let provider = state
-        .database
-        .delete_provider_credential(token, &provider_id)
-        .await
-        .map_err(|error| {
-            error!(
-                error = %error,
-                token_fingerprint = %token_fingerprint(token),
-                provider_id = %provider_id,
-                "delete_provider failed"
-            );
-            internal_error(error)
-        })?
-        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
+    let mut provider = None;
+    for attempt in 0..=DELETE_PROVIDER_CONFLICT_RETRIES {
+        match state
+            .database
+            .delete_provider_credential(token, &provider_id)
+            .await
+        {
+            Ok(result) => {
+                provider = result;
+                break;
+            }
+            Err(error)
+                if is_database_conflict(&error) && attempt < DELETE_PROVIDER_CONFLICT_RETRIES =>
+            {
+                warn!(
+                    error = %error,
+                    token_fingerprint = %token_fingerprint(token),
+                    provider_id = %provider_id,
+                    attempt,
+                    "delete_provider hit a transient database conflict; retrying"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    DELETE_PROVIDER_CONFLICT_BACKOFF_MS * (attempt as u64 + 1),
+                ))
+                .await;
+            }
+            Err(error) => {
+                error!(
+                    error = %error,
+                    token_fingerprint = %token_fingerprint(token),
+                    provider_id = %provider_id,
+                    "delete_provider failed"
+                );
+                return Err(map_database_error(error));
+            }
+        }
+    }
+
+    let provider = provider.ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
@@ -639,7 +667,7 @@ async fn delete_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "delete_virtual_key failed");
-            internal_error(error)
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
@@ -764,6 +792,16 @@ fn map_database_error(error: DatabaseError) -> AppError {
     }
 }
 
+fn is_database_conflict(error: &DatabaseError) -> bool {
+    match error {
+        DatabaseError::Database(inner) => {
+            let message = inner.to_string().to_lowercase();
+            message.contains("transaction conflict") || message.contains("resource busy")
+        }
+        _ => false,
+    }
+}
+
 fn classify_database_message(message: String) -> AppError {
     let lower = message.to_lowercase();
 
@@ -779,11 +817,15 @@ fn classify_database_message(message: String) -> AppError {
     }
 
     if lower.contains("model alias(es) not found in your catalog") {
-        return AppError::BadRequest("One or more model aliases were not found in your catalog".into());
+        return AppError::BadRequest(
+            "One or more model aliases were not found in your catalog".into(),
+        );
     }
 
     if lower.contains("virtual api key has no route configured for this model") {
-        return AppError::BadRequest("No route configured for this model on this virtual key".into());
+        return AppError::BadRequest(
+            "No route configured for this model on this virtual key".into(),
+        );
     }
 
     if lower.contains("provider credential does not support model alias")
@@ -795,7 +837,9 @@ fn classify_database_message(message: String) -> AppError {
     }
 
     if lower.contains("route alias is outside virtual key scope") {
-        return AppError::BadRequest("Route model alias is outside the virtual key's allowed scope".into());
+        return AppError::BadRequest(
+            "Route model alias is outside the virtual key's allowed scope".into(),
+        );
     }
 
     if lower.contains("expected `record<provider_credential>`") {
@@ -816,6 +860,14 @@ fn classify_database_message(message: String) -> AppError {
 
     if lower.contains("provider credential not found or disabled") {
         return AppError::NotFound("Provider credential not found or disabled".into());
+    }
+
+    if lower.contains("virtual api key not found or access denied") {
+        return AppError::NotFound("Virtual key not found".into());
+    }
+
+    if lower.contains("transaction conflict") || lower.contains("resource busy") {
+        return AppError::Internal(anyhow::anyhow!("Database conflict, please retry"));
     }
 
     internal_error(message)
