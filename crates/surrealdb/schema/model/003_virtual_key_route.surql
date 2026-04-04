@@ -15,3 +15,6 @@ DEFINE FIELD IF NOT EXISTS updated_at ON TABLE virtual_key_route TYPE datetime V
 
 DEFINE INDEX IF NOT EXISTS virtual_key_route_alias_unique
     ON TABLE virtual_key_route FIELDS in, model_alias UNIQUE;
+
+-- Performance index: cascade delete by credential (DELETE virtual_key_route WHERE out = $cred_id)
+DEFINE INDEX IF NOT EXISTS idx_virtual_key_route_out ON TABLE virtual_key_route FIELDS out;

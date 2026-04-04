@@ -2,13 +2,13 @@
 -- PERMISSIONS WHERE $auth != NONE: $auth.id IS available inside the function body
 
 DEFINE FUNCTION OVERWRITE fn::list_provider_credentials() {
-    RETURN SELECT * FROM provider_credential
+    RETURN SELECT * OMIT encrypted_api_key FROM provider_credential
            WHERE user = $auth.id
            ORDER BY created_at ASC;
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
 DEFINE FUNCTION OVERWRITE fn::get_provider_credential($id: record<provider_credential>) {
-    RETURN (SELECT * FROM $id WHERE user = $auth.id)[0];
+    RETURN (SELECT * OMIT encrypted_api_key FROM $id WHERE user = $auth.id)[0];
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
 -- encrypted_api_key must be encrypted by Rust before calling this

@@ -45,13 +45,16 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
         warn!(credential_id, error = %e, "failed to set sync_status=syncing");
     }
 
+    // Fetch and decrypt the provider API key via the backend_service grant.
+    // This avoids holding the encrypted_api_key in the credential response.
     let api_key = match state
         .database
-        .decrypt_provider_api_key(&credential.encrypted_api_key)
+        .fetch_proxy_provider_api_key(&credential.id)
+        .await
     {
         Ok(key) => key,
         Err(e) => {
-            warn!(credential_id, error = %e, "failed to decrypt API key for sync");
+            warn!(credential_id, error = %e, "failed to fetch API key for sync");
             let _ = state
                 .database
                 .set_credential_sync_status(token, credential_id, "failed", Some(e.to_string()))

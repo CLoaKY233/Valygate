@@ -6,4 +6,4 @@ DEFINE ACCESS OVERWRITE virtual_key_access ON DATABASE TYPE RECORD
           AND (expires_at = NONE OR expires_at > time::now())
         LIMIT 1
     )
-    DURATION FOR TOKEN 1m, FOR SESSION NONE;
+    DURATION FOR TOKEN 15m, FOR SESSION NONE;

@@ -78,9 +78,20 @@ impl Database {
     /// Connects and authenticates the backend-service client once at startup.
     pub async fn initialize_runtime(&self) -> Result<(), DatabaseError> {
         if !self.config.has_service_credentials() {
-            return Ok(());
+            return Err(DatabaseError::InvalidConfig(
+                "VALYMUX_DB_SERVICE_KEY is required but not set. \
+                 Run `./scripts/generate_backend_grant.sh` to create the backend service grant, \
+                 then set the returned key as VALYMUX_DB_SERVICE_KEY in your .env file."
+                    .into(),
+            ));
         }
-        let _ = self.service_client().await?;
+        let _ = self.service_client().await.map_err(|e| {
+            DatabaseError::ServiceAuth(format!(
+                "Backend service authentication failed: {e}. \
+                 If the grant has expired (30-day TTL), run `./scripts/generate_backend_grant.sh` \
+                 to rotate the key."
+            ))
+        })?;
         Ok(())
     }
 
@@ -443,13 +454,31 @@ impl Database {
         let client = self.client_with_jwt(token).await?;
         let cred_id = parse_thing(credential_id)?;
 
-        client
-            .query("RETURN fn::sync_models($cred_id, $models);")
-            .bind(("cred_id", cred_id))
-            .bind(("models", models))
-            .await?
-            .take::<Option<i64>>(0)?
-            .ok_or_else(|| DatabaseError::NotFound("sync_models returned no count".into()))
+        // Retry on transaction conflicts (can occur when two syncs race on the same credential).
+        // SurrealDB itself signals these as retryable: "Transaction conflict: Resource busy".
+        for attempt in 0u32..3 {
+            let result = client
+                .query("RETURN fn::sync_models($cred_id, $models);")
+                .bind(("cred_id", cred_id.clone()))
+                .bind(("models", models.clone()))
+                .await
+                .and_then(|mut r| r.take::<Option<i64>>(0));
+
+            match result {
+                Ok(Some(count)) => return Ok(count),
+                Ok(None) => {
+                    return Err(DatabaseError::NotFound(
+                        "sync_models returned no count".into(),
+                    ))
+                }
+                Err(e) if attempt < 2 && e.to_string().contains("Transaction conflict") => {
+                    let delay = std::time::Duration::from_millis(200 * 2u64.pow(attempt));
+                    tokio::time::sleep(delay).await;
+                }
+                Err(e) => return Err(e.into()),
+            }
+        }
+        unreachable!()
     }
 
     /// Updates sync status on a credential (for error reporting).

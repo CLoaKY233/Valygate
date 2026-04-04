@@ -87,7 +87,7 @@ DEFINE FUNCTION OVERWRITE fn::proxy_resolve_route($model_alias: string) {
         provider_credential_id: $cred.id,
         provider: $cred.provider
     };
-} PERMISSIONS FULL;
+} PERMISSIONS WHERE $access = "virtual_key_access";
 
 DEFINE FUNCTION OVERWRITE fn::backend_fetch_secret(
     $cred_id: record<provider_credential>
@@ -136,4 +136,4 @@ DEFINE FUNCTION OVERWRITE fn::proxy_log_request(
         usage_input_tokens: $usage_input_tokens,
         usage_output_tokens: $usage_output_tokens
     };
-} PERMISSIONS FULL;
+} PERMISSIONS WHERE $access = "virtual_key_access";

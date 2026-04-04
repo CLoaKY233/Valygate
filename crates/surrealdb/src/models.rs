@@ -50,7 +50,10 @@ pub struct ProviderCredential {
     pub user: RecordId,
     pub provider: String,
     pub label: String,
-    pub encrypted_api_key: String,
+    /// Absent from list/get API responses (omitted in SurrealQL functions).
+    /// Present only when the field is explicitly selected (e.g., internal audit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_api_key: Option<String>,
     pub tags: Vec<String>,
     pub enabled: bool,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -69,7 +72,10 @@ impl fmt::Debug for ProviderCredential {
             .field("user", &self.user)
             .field("provider", &self.provider)
             .field("label", &self.label)
-            .field("encrypted_api_key", &"<redacted>")
+            .field(
+                "encrypted_api_key",
+                &self.encrypted_api_key.as_ref().map(|_| "<redacted>"),
+            )
             .field("tags", &self.tags)
             .field("enabled", &self.enabled)
             .field("last_used_at", &self.last_used_at)
@@ -200,7 +206,7 @@ pub struct UpdateProfileInput {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+#[derive(Clone, Serialize, Deserialize, SurrealValue)]
 pub struct CreateProviderCredentialInput {
     pub provider: ProviderKind,
     pub label: String,
@@ -208,12 +214,34 @@ pub struct CreateProviderCredentialInput {
     pub tags: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+impl fmt::Debug for CreateProviderCredentialInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateProviderCredentialInput")
+            .field("provider", &self.provider)
+            .field("label", &self.label)
+            .field("api_key", &"<redacted>")
+            .field("tags", &self.tags)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, SurrealValue)]
 pub struct UpdateProviderCredentialInput {
     pub label: String,
     pub api_key: Option<String>,
     pub tags: Vec<String>,
     pub enabled: bool,
+}
+
+impl fmt::Debug for UpdateProviderCredentialInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UpdateProviderCredentialInput")
+            .field("label", &self.label)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("tags", &self.tags)
+            .field("enabled", &self.enabled)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]

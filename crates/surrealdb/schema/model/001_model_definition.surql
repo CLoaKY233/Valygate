@@ -2,8 +2,10 @@ DEFINE TABLE OVERWRITE model_definition SCHEMAFULL
     PERMISSIONS
         FOR select
             WHERE $access = "account" OR $access = "virtual_key_access"
-        FOR create, update
+        FOR create
             WHERE $access = "account"
+        FOR update
+            WHERE $access = "backend_service"
         FOR delete
             NONE;
 

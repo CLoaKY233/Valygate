@@ -14,3 +14,7 @@ DEFINE FIELD IF NOT EXISTS updated_at ON TABLE supports TYPE datetime VALUE time
 
 DEFINE INDEX IF NOT EXISTS supports_unique_edge
     ON TABLE supports FIELDS in, out UNIQUE;
+
+-- Performance indices: traversal from credential → models and reverse
+DEFINE INDEX IF NOT EXISTS idx_supports_in  ON TABLE supports FIELDS in;
+DEFINE INDEX IF NOT EXISTS idx_supports_out ON TABLE supports FIELDS out;

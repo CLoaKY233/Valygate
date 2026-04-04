@@ -21,7 +21,8 @@ DEFINE FUNCTION OVERWRITE fn::get_virtual_api_key($id: record<virtual_api_key>) 
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
 DEFINE FUNCTION OVERWRITE fn::validate_model_aliases($aliases: array) {
-    IF array::len($aliases) = 0 {
+    -- Empty array means "all models allowed"; "*" is a recognised wildcard shorthand.
+    IF array::len($aliases) = 0 OR "*" INSIDE $aliases {
         RETURN true;
     };
 
@@ -62,7 +63,8 @@ DEFINE FUNCTION OVERWRITE fn::validate_virtual_key_routes($routes: array, $allow
         };
 
         IF $route.model_alias != "*" {
-            IF array::len($allowed_models) > 0 AND !($route.model_alias INSIDE $allowed_models) {
+            -- Skip scope check when allowed_models contains "*" (unrestricted key)
+            IF array::len($allowed_models) > 0 AND !("*" INSIDE $allowed_models) AND !($route.model_alias INSIDE $allowed_models) {
                 THROW string::concat(
                     "route alias is outside virtual key scope: ",
                     $route.model_alias

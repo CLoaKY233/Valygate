@@ -2,7 +2,11 @@
 -- PERMISSIONS WHERE $auth != NONE: $auth.id IS available inside the function body
 
 DEFINE FUNCTION OVERWRITE fn::get_current_user() {
-    LET $user = (SELECT * FROM $auth.id)[0];
+    -- Explicit column list intentionally excludes the password hash.
+    LET $user = (
+        SELECT id, name, email, enabled, created_at, updated_at
+        FROM $auth.id
+    )[0];
     IF $user = NONE {
         THROW "authenticated user not found";
     };

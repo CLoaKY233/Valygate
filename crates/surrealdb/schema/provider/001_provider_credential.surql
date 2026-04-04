@@ -30,3 +30,7 @@ DEFINE FIELD IF NOT EXISTS updated_at ON TABLE provider_credential TYPE datetime
 
 DEFINE INDEX IF NOT EXISTS provider_credential_user_provider_label_unique
     ON TABLE provider_credential FIELDS user, provider, label UNIQUE;
+
+-- Performance index: credential lookups by owner (list, cascade delete, model sync)
+DEFINE INDEX IF NOT EXISTS idx_provider_credential_user
+    ON TABLE provider_credential FIELDS user;

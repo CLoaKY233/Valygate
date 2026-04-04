@@ -202,6 +202,12 @@ async fn signup(
     Json(input): Json<SignupInput>,
 ) -> Result<Json<AuthResponse>, AppError> {
     debug!("signup request received");
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name must not be empty".into()));
+    }
+    if input.password.is_empty() {
+        return Err(AppError::BadRequest("password must not be empty".into()));
+    }
     let session = state.database.signup_user(input).await.map_err(|error| {
         error!(error = %error, "signup failed");
         match error {
@@ -479,6 +485,11 @@ async fn sync_provider(
         .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
 
     let credential_id = credential.id.to_sql();
+
+    // If a sync is already running, return 202 without spawning a duplicate.
+    if credential.sync_status == "syncing" {
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // Mark as syncing immediately
     state
@@ -848,6 +859,11 @@ fn classify_database_message(message: String) -> AppError {
 
     if lower.contains("expected `record<virtual_api_key>`") {
         return AppError::BadRequest("Invalid virtual key ID".into());
+    }
+
+    // Catch-all for any other record type mismatch — avoids leaking schema type names.
+    if lower.contains("expected `record<") {
+        return AppError::BadRequest("Invalid resource identifier".into());
     }
 
     if lower.contains("requested model not found in catalog") {
