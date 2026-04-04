@@ -29,7 +29,7 @@ ValyMux is a Rust workspace with a binary crate (`src/`) and three library crate
   - `schema/` — SurrealQL files for tables, indices, seed data
   - `models/` — Rust types mirroring database records
   - `crypto.rs` — AES-256-GCM encryption for provider keys
-  - `client.rs` — SurrealDB connection pool and query helpers
+  - `lib.rs` — SurrealDB connection facade, connection pool, and query helpers
 
 - **`crates/telemetry/`** — Tracing and logging initialization
   - Supports `json`, `compact`, and `pretty` output formats
@@ -41,7 +41,7 @@ ValyMux is a Rust workspace with a binary crate (`src/`) and three library crate
 
 ### Proxy Request (Chat Completions)
 
-```
+```text
 POST /v1/chat/completions (Bearer token)
   → RequireAuth extractor validates virtual key
   → handler looks up provider credentials
@@ -117,7 +117,7 @@ cargo run --release         # Release-optimized binary
 ```bash
 cargo test                   # Run all tests (unit + integration)
 cargo test --lib            # Unit tests only
-cargo test --test '*'       # Integration tests only
+cargo test --tests          # All integration test targets
 cargo test test_name        # Run a single test by name
 ```
 
@@ -167,7 +167,9 @@ cargo build --release        # Production binary (target/release/valymux)
 - `LOG_FORMAT` — Output format: `json` / `compact` / `pretty` (default `compact`)
 - `RUST_LOG` — Filter directive (default `valymux=info`). Examples: `valymux=debug`, `valymux=trace,tower_http=debug`
 - `HTTP_TIMEOUT_SECS` — Upstream request timeout (default `300`)
-- `SURREAL_URL`, `SURREAL_NAMESPACE`, `SURREAL_DATABASE`, `SURREAL_USERNAME`, `SURREAL_PASSWORD` — SurrealDB connection
+- `SURREAL_URL`, `SURREAL_NAMESPACE`, `SURREAL_DATABASE` — SurrealDB connection (required)
+- `SURREAL_USERNAME`, `SURREAL_PASSWORD` — SurrealDB credentials (optional; migration/bootstrap only)
+- `VALYMUX_DB_SERVICE_KEY` — Bearer grant key for backend_service DB access used by the proxy (required; generate with `./scripts/generate_backend_grant.sh`)
 - `SURREAL_ENCRYPTION_KEY` — 32-byte hex key for AES-256-GCM encryption of provider secrets (required, no default)
 
 ---
@@ -283,9 +285,9 @@ See `documents/01_MVP_DEFINITION.md` and `documents/04_ROADMAP_30_DAYS.md` for d
 - **Always** use `SURREAL_ENCRYPTION_KEY` — it's mandatory, no defaults
 
 **Data Handling:**
-- Request bodies can contain user messages but are only logged for debugging (redact in production)
-- Response bodies should not contain secrets (provider errors sometimes leak)
-- Usage logs track tokens and model names, not message content
+- Do not log request or response bodies — they may contain user messages or provider secrets. Tightly-gated local debug logging is acceptable only with full redaction enforced
+- Usage logs track tokens and model names only — never message content
+- Verify no secret leakage occurs in error responses (provider errors can inadvertently include sensitive strings)
 
 **Dependency Security:**
 - Run `cargo audit` and `cargo deny check` before releasing

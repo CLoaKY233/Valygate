@@ -5,7 +5,8 @@ DEFINE TABLE OVERWRITE user SCHEMAFULL
         FOR create
             WHERE $auth = NONE;
 
-DEFINE FIELD IF NOT EXISTS name ON TABLE user TYPE string;
+DEFINE FIELD OVERWRITE name ON TABLE user TYPE string
+    ASSERT string::len($value) >= 1 AND string::len($value) <= 256;
 DEFINE FIELD IF NOT EXISTS email ON TABLE user TYPE string ASSERT string::is_email($value);
 DEFINE FIELD IF NOT EXISTS password ON TABLE user TYPE string;
 DEFINE FIELD OVERWRITE enabled ON TABLE user TYPE bool DEFAULT true;

@@ -8,8 +8,11 @@ pub async fn discover_models(
     api_key: &str,
     client: &reqwest::Client,
 ) -> Result<Vec<ModelSyncInput>> {
-    let url = format!("{LIST_URL}&key={api_key}");
-    let response = client.get(&url).send().await?;
+    let response = client
+        .get(LIST_URL)
+        .header("x-goog-api-key", api_key)
+        .send()
+        .await?;
 
     if !response.status().is_success() {
         let status = response.status();

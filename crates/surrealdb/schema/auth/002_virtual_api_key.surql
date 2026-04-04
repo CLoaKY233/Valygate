@@ -16,6 +16,7 @@ DEFINE TABLE OVERWRITE virtual_api_key SCHEMAFULL
 DEFINE FIELD OVERWRITE user ON TABLE virtual_api_key TYPE record<user>
     PERMISSIONS FOR update WHERE user = $auth.id AND $access = "account";
 DEFINE FIELD OVERWRITE name ON TABLE virtual_api_key TYPE string
+    ASSERT string::len($value) >= 1 AND string::len($value) <= 256
     PERMISSIONS FOR update WHERE user = $auth.id AND $access = "account";
 DEFINE FIELD OVERWRITE key_prefix ON TABLE virtual_api_key TYPE string
     PERMISSIONS FOR update WHERE user = $auth.id AND $access = "account";

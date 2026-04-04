@@ -205,7 +205,7 @@ async fn signup(
     if input.name.trim().is_empty() {
         return Err(AppError::BadRequest("name must not be empty".into()));
     }
-    if input.password.is_empty() {
+    if input.password.trim().is_empty() {
         return Err(AppError::BadRequest("password must not be empty".into()));
     }
     let session = state.database.signup_user(input).await.map_err(|error| {
@@ -486,20 +486,20 @@ async fn sync_provider(
 
     let credential_id = credential.id.to_sql();
 
-    // If a sync is already running, return 202 without spawning a duplicate.
-    if credential.sync_status == "syncing" {
-        return Ok(StatusCode::ACCEPTED);
-    }
-
-    // Mark as syncing immediately
-    state
+    // Atomically acquire the sync lock. Returns false when a sync is already in progress,
+    // preventing duplicate concurrent syncs without a TOCTOU race.
+    let acquired = state
         .database
-        .set_credential_sync_status(token, &credential_id, "syncing", None)
+        .start_credential_sync(token, &credential_id)
         .await
         .map_err(|error| {
-            error!(error = %error, credential_id = %credential_id, "sync_provider: failed to set status");
+            error!(error = %error, credential_id = %credential_id, "sync_provider: failed to start sync");
             internal_error(error)
         })?;
+
+    if !acquired {
+        return Ok(StatusCode::ACCEPTED);
+    }
 
     // Spawn background task - need to clone token for the async task
     let state_clone = Arc::clone(&state);

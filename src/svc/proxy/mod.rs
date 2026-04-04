@@ -350,6 +350,12 @@ fn classify_proxy_database_message(message: String) -> AppError {
         return AppError::NotFound("Provider credential is disabled or not found".into());
     }
 
+    if lower.contains("provider credential does not support requested model") {
+        return AppError::BadRequest(
+            "Provider credential does not support the requested model".into(),
+        );
+    }
+
     internal_error(message)
 }
 
@@ -410,5 +416,13 @@ mod tests {
             "virtual API key has no route configured for this model".into(),
         );
         assert!(matches!(error, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn classifies_unsupported_model_as_bad_request() {
+        let error = classify_proxy_database_message(
+            "provider credential does not support requested model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
     }
 }

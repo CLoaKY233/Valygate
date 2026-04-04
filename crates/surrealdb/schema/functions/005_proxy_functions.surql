@@ -8,7 +8,9 @@ DEFINE FUNCTION OVERWRITE fn::proxy_resolve_route($model_alias: string) {
         THROW "invalid or expired virtual API key";
     };
 
-    IF array::len($key.allowed_models) > 0 AND !($model_alias INSIDE $key.allowed_models) {
+    IF array::len($key.allowed_models) > 0
+        AND !("*" INSIDE $key.allowed_models)
+        AND !($model_alias INSIDE $key.allowed_models) {
         THROW "virtual API key is not allowed to use this model";
     };
 

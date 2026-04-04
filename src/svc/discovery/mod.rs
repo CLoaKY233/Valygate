@@ -20,11 +20,27 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
     {
         Ok(Some(c)) => c,
         Ok(None) => {
-            warn!(credential_id, "credential not found for model sync");
+            warn!(
+                credential_id,
+                "credential not found at sync start; marking as failed"
+            );
+            let _ = state
+                .database
+                .set_credential_sync_status(
+                    token,
+                    credential_id,
+                    "failed",
+                    Some("credential not found at sync start".into()),
+                )
+                .await;
             return;
         }
         Err(e) => {
-            warn!(credential_id, error = %e, "failed to fetch credential for sync");
+            warn!(credential_id, error = %e, "failed to fetch credential for sync; marking as failed");
+            let _ = state
+                .database
+                .set_credential_sync_status(token, credential_id, "failed", Some(e.to_string()))
+                .await;
             return;
         }
     };
@@ -118,9 +134,9 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
         .await
     {
         warn!(credential_id, error = %e, "failed to set sync_status=completed");
+    } else {
+        info!(credential_id, count, "model sync completed");
     }
-
-    info!(credential_id, count, "model sync completed");
 }
 
 async fn credential_is_active_for_sync(state: &AppState, token: &str, credential_id: &str) -> bool {
@@ -132,7 +148,11 @@ async fn credential_is_active_for_sync(state: &AppState, token: &str, credential
         Ok(Some(credential)) => credential.sync_status != PROVIDER_SYNC_STATUS_DELETING,
         Ok(None) => false,
         Err(error) => {
-            warn!(credential_id, error = %error, "failed to re-check credential during sync");
+            warn!(credential_id, error = %error, "failed to re-check credential during sync; marking sync as failed");
+            let _ = state
+                .database
+                .set_credential_sync_status(token, credential_id, "failed", Some(error.to_string()))
+                .await;
             false
         }
     }

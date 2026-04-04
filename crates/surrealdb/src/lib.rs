@@ -205,6 +205,7 @@ impl Database {
             .query("RETURN fn::update_profile($changed_name); RETURN fn::get_current_user();")
             .bind(("changed_name", input.name))
             .await?
+            // Index 1 = fn::get_current_user() (the freshly-updated user); index 0 = fn::update_profile return (ignored)
             .take::<Option<User>>(1)?
             .ok_or_else(|| DatabaseError::NotFound("user not found after profile update".into()))
     }
@@ -469,7 +470,7 @@ impl Database {
                 Ok(None) => {
                     return Err(DatabaseError::NotFound(
                         "sync_models returned no count".into(),
-                    ))
+                    ));
                 }
                 Err(e) if attempt < 2 && e.to_string().contains("Transaction conflict") => {
                     let delay = std::time::Duration::from_millis(200 * 2u64.pow(attempt));
@@ -478,6 +479,8 @@ impl Database {
                 Err(e) => return Err(e.into()),
             }
         }
+        // Safety: the final attempt (attempt == 2) always returns via `Err(e) => return Err(...)`.
+        // All three attempts either return immediately (Ok variants) or exhaust retries and return.
         unreachable!()
     }
 
@@ -500,6 +503,24 @@ impl Database {
             .await?;
 
         Ok(())
+    }
+
+    /// Atomically transitions a credential to "syncing" only if it is not already syncing.
+    /// Returns `true` if the caller acquired the sync lock, `false` if already syncing.
+    pub async fn start_credential_sync(
+        &self,
+        token: &str,
+        credential_id: &str,
+    ) -> Result<bool, DatabaseError> {
+        let client = self.client_with_jwt(token).await?;
+        let cred_id = parse_thing(credential_id)?;
+        client
+            .query("RETURN fn::start_provider_sync($id);")
+            .bind(("id", cred_id))
+            .await?
+            .take::<Option<bool>>(0)
+            .map_err(Into::into)
+            .map(|v| v.unwrap_or(false))
     }
 
     // ==================== Proxy Operations (Data Plane) ====================

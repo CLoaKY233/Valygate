@@ -61,6 +61,21 @@ DEFINE FUNCTION OVERWRITE fn::update_provider_credential(
     } WHERE user = $auth.id RETURN AFTER)[0];
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
+-- Atomically transitions a credential to "syncing" only if it is not already syncing,
+-- or if the existing sync lock is stale (started more than 10 minutes ago).
+-- Returns true if the caller acquired the sync lock, false if already syncing.
+DEFINE FUNCTION OVERWRITE fn::start_provider_sync($id: record<provider_credential>) {
+    LET $updated = (
+        UPDATE $id SET sync_status = "syncing", sync_error = NONE, sync_started_at = time::now()
+        WHERE user = $auth.id
+          AND (sync_status != "syncing"
+               OR sync_started_at = NONE
+               OR sync_started_at < time::now() - 10m)
+        RETURN AFTER
+    )[0];
+    RETURN $updated != NONE;
+} PERMISSIONS WHERE $auth != NONE AND $access = "account";
+
 DEFINE FUNCTION OVERWRITE fn::delete_provider_credential($id: record<provider_credential>) {
     LET $before = (SELECT * FROM $id WHERE user = $auth.id)[0];
     IF $before = NONE {

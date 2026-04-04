@@ -29,7 +29,7 @@ ValyMux is a Rust workspace with a binary crate (`src/`) and three library crate
   - `schema/` — SurrealQL files for tables, indices, seed data
   - `models/` — Rust types mirroring database records
   - `crypto.rs` — AES-256-GCM encryption for provider keys
-  - `client.rs` — SurrealDB connection pool and query helpers
+  - `lib.rs` — SurrealDB connection facade, connection pool, and query helpers
 
 - **`crates/telemetry/`** — Tracing and logging initialization
   - Supports `json`, `compact`, and `pretty` output formats
@@ -106,20 +106,23 @@ Implementation:
 ## Build, Test, and Development Commands
 
 **Running the server:**
+
 ```bash
 cargo run                    # Start API on 0.0.0.0:3000 (see .env.example)
 cargo run --release         # Release-optimized binary
 ```
 
 **Testing:**
+
 ```bash
 cargo test                   # Run all tests (unit + integration)
 cargo test --lib            # Unit tests only
-cargo test --test '*'       # Integration tests only
+cargo test --tests          # All integration test targets
 cargo test test_name        # Run a single test by name
 ```
 
 **Code quality:**
+
 ```bash
 cargo clippy --all-targets --all-features -- -D warnings  # Lint check (required before PR)
 cargo fmt --all             # Format all code (required before PR)
@@ -127,6 +130,7 @@ cargo fmt --all -- --check  # Check formatting without modifying
 ```
 
 **Dependency & security audits:**
+
 ```bash
 cargo audit                  # Check for known vulnerabilities
 cargo deny check             # Check license policy and dependency security
@@ -134,6 +138,7 @@ cargo update                 # Update dependencies (monthly recommended)
 ```
 
 **Release build:**
+
 ```bash
 cargo build --release        # Production binary (target/release/valymux)
 ```
@@ -259,7 +264,7 @@ See `documents/01_MVP_DEFINITION.md` and `documents/04_ROADMAP_30_DAYS.md` for d
 - Examples:
   - `Fix: Handle Anthropic streaming edge case`
   - `Feat: Add Google Gemini provider adapter`
-  - `Chore: Update Rust toolchain to 1.94`
+  - `Chore: Update Rust toolchain to 1.85`
 
 **Pull Requests:**
 - Follow `.github/PULL_REQUEST_TEMPLATE.md` — summary, type, change list, testing notes
@@ -280,9 +285,9 @@ See `documents/01_MVP_DEFINITION.md` and `documents/04_ROADMAP_30_DAYS.md` for d
 - **Always** use `SURREAL_ENCRYPTION_KEY` — it's mandatory, no defaults
 
 **Data Handling:**
-- Request bodies can contain user messages but are only logged for debugging (redact in production)
-- Response bodies should not contain secrets (provider errors sometimes leak)
-- Usage logs track tokens and model names, not message content
+- Do not log request or response bodies — they may contain user messages or provider secrets. Tightly-gated local debug logging is acceptable only with full redaction enforced
+- Usage logs track tokens and model names only — never message content
+- Verify no secret leakage occurs in error responses (provider errors can inadvertently include sensitive strings)
 
 **Dependency Security:**
 - Run `cargo audit` and `cargo deny check` before releasing

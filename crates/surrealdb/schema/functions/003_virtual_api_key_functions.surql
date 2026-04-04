@@ -52,6 +52,12 @@ DEFINE FUNCTION OVERWRITE fn::validate_model_aliases($aliases: array) {
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";
 
 DEFINE FUNCTION OVERWRITE fn::validate_virtual_key_routes($routes: array, $allowed_models: array) {
+    -- Guard against duplicate model_alias values (would hit the UNIQUE index at RELATE time)
+    LET $route_aliases = array::map($routes, |$r| $r.model_alias);
+    IF array::len($route_aliases) != array::len(array::distinct($route_aliases)) {
+        THROW "duplicate route alias: each model_alias must appear at most once";
+    };
+
     FOR $route IN $routes {
         LET $cred = (
             SELECT * FROM $route.provider_credential_id
@@ -99,6 +105,8 @@ DEFINE FUNCTION OVERWRITE fn::replace_virtual_key_routes(
     $key_id: record<virtual_api_key>,
     $routes: array
 ) {
+    -- Atomic replace: if any RELATE fails the DELETE is rolled back, leaving routes intact.
+    BEGIN TRANSACTION;
     DELETE virtual_key_route WHERE in = $key_id;
 
     FOR $route IN $routes {
@@ -106,6 +114,7 @@ DEFINE FUNCTION OVERWRITE fn::replace_virtual_key_routes(
         RELATE $key_id->virtual_key_route->$provider_credential_id
             SET model_alias = $route.model_alias;
     };
+    COMMIT TRANSACTION;
 
     RETURN (
         SELECT
@@ -205,7 +214,7 @@ DEFINE FUNCTION OVERWRITE fn::delete_virtual_api_key($id: record<virtual_api_key
         WHERE user = $auth.id
     )[0];
     IF $before = NONE {
-        RETURN NONE;
+        THROW "virtual API key not found or access denied";
     };
 
     DELETE virtual_key_route WHERE in = $id;
