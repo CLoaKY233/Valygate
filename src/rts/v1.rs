@@ -879,6 +879,18 @@ fn classify_database_message(message: String) -> AppError {
         );
     }
 
+    if lower.contains("duplicate route alias") {
+        return AppError::BadRequest(
+            "Each model alias can only appear once in the route list".into(),
+        );
+    }
+
+    if lower.contains("missing route alias(es) for allowed models") {
+        return AppError::BadRequest(
+            "Every allowed model must have a corresponding route entry".into(),
+        );
+    }
+
     if lower.contains("expected `record<provider_credential>`") {
         return AppError::BadRequest("Invalid provider credential ID".into());
     }
