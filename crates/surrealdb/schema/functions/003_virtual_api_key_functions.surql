@@ -105,8 +105,6 @@ DEFINE FUNCTION OVERWRITE fn::replace_virtual_key_routes(
     $key_id: record<virtual_api_key>,
     $routes: array
 ) {
-    -- Atomic replace: if any RELATE fails the DELETE is rolled back, leaving routes intact.
-    BEGIN TRANSACTION;
     DELETE virtual_key_route WHERE in = $key_id;
 
     FOR $route IN $routes {
@@ -114,7 +112,6 @@ DEFINE FUNCTION OVERWRITE fn::replace_virtual_key_routes(
         RELATE $key_id->virtual_key_route->$provider_credential_id
             SET model_alias = $route.model_alias;
     };
-    COMMIT TRANSACTION;
 
     RETURN (
         SELECT

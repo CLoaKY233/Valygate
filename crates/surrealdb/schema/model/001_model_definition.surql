@@ -5,7 +5,7 @@ DEFINE TABLE OVERWRITE model_definition SCHEMAFULL
         FOR create
             WHERE $access = "account"
         FOR update
-            WHERE $access = "backend_service"
+            WHERE $access = "account" OR $access = "backend_service"
         FOR delete
             NONE;
 

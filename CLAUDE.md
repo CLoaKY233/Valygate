@@ -43,7 +43,7 @@ ValyMux is a Rust workspace with a binary crate (`src/`) and three library crate
 
 ```text
 POST /v1/chat/completions (Bearer token)
-  → RequireAuth extractor validates virtual key
+  → extract_bearer helper extracts Bearer token (virtual key) from Authorization header
   → handler looks up provider credentials
   → src/svc/proxy/provider.rs translates OpenAI request → provider format
   → reqwest makes HTTP call to provider (OpenAI/Anthropic/Google)
@@ -151,14 +151,18 @@ cargo build --release        # Production binary (target/release/valymux)
 1. Install Rust 1.85+ (stable): `rustup update stable`
 2. Clone repo and navigate to project root
 3. Copy `.env.example` to `.env` and edit:
-   ```bash
-   cp .env.example .env
-   $EDITOR .env
-   ```
+
+    ```bash
+    cp .env.example .env
+    $EDITOR .env
+    ```
+
 4. Set `SURREAL_ENCRYPTION_KEY`:
-   ```bash
-   openssl rand -hex 32  # Generate 32-byte hex key
-   ```
+
+    ```bash
+    openssl rand -hex 32  # Generate 32-byte hex key
+    ```
+
 5. Start SurrealDB (local or cloud) and update `SURREAL_URL`, `SURREAL_NAMESPACE`, `SURREAL_DATABASE`
 6. Run: `cargo run`
 

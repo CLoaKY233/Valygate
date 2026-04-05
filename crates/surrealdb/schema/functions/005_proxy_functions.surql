@@ -45,6 +45,7 @@ DEFINE FUNCTION OVERWRITE fn::proxy_resolve_route($model_alias: string) {
         SELECT * FROM $route.out
         WHERE enabled = true
           AND user = $key.user
+          AND sync_status != "deleting"
         LIMIT 1
     )[0];
     IF $cred = NONE {

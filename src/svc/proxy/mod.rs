@@ -314,8 +314,8 @@ fn internal_error(error: impl std::fmt::Display) -> AppError {
 fn map_proxy_database_error(error: DatabaseError) -> AppError {
     match error {
         DatabaseError::NotFound(msg) => AppError::NotFound(msg),
-        DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
-        DatabaseError::ServiceAuth(msg) => AppError::Unauthorized(msg),
+        DatabaseError::InvalidConfig(msg) => internal_error(msg),
+        DatabaseError::ServiceAuth(msg) => internal_error(msg),
         DatabaseError::SecretFetch(inner) => internal_error(inner),
         DatabaseError::Database(inner) => classify_proxy_database_message(inner.to_string()),
         other => internal_error(other),

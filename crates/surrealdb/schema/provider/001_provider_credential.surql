@@ -16,8 +16,7 @@ DEFINE FIELD OVERWRITE label ON TABLE provider_credential TYPE string
     ASSERT string::len($value) >= 1 AND string::len($value) <= 256;
 DEFINE FIELD OVERWRITE encrypted_api_key ON TABLE provider_credential TYPE string
     PERMISSIONS
-        FOR select WHERE $access = "account" AND user = $auth.id
-                      OR $access = "backend_service"
+        FOR select WHERE $access = "backend_service"
         FOR update WHERE $access = "account" AND user = $auth.id
         FOR create FULL;
 DEFINE FIELD IF NOT EXISTS tags ON TABLE provider_credential TYPE array;

@@ -68,6 +68,7 @@ DEFINE FUNCTION OVERWRITE fn::start_provider_sync($id: record<provider_credentia
     LET $updated = (
         UPDATE $id SET sync_status = "syncing", sync_error = NONE, sync_started_at = time::now()
         WHERE user = $auth.id
+          AND sync_status != "deleting"
           AND (sync_status != "syncing"
                OR sync_started_at = NONE
                OR sync_started_at < time::now() - 10m)

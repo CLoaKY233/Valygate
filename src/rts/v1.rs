@@ -322,12 +322,35 @@ async fn create_provider(
         })?;
 
     // Spawn background model discovery — does not block the response
-    let state_clone = Arc::clone(&state);
-    let token_clone = token.to_string();
+    // Acquire the sync lock first to prevent racing with a manual /providers/{id}/sync
     let credential_id = credential.id.to_sql();
-    tokio::spawn(async move {
-        crate::svc::discovery::run_sync(state_clone, &token_clone, &credential_id).await;
-    });
+    match state
+        .database
+        .start_credential_sync(token, &credential_id)
+        .await
+    {
+        Ok(true) => {
+            let state_clone = Arc::clone(&state);
+            let token_clone = token.to_string();
+            let cid = credential_id.clone();
+            tokio::spawn(async move {
+                crate::svc::discovery::run_sync(state_clone, &token_clone, &cid).await;
+            });
+        }
+        Ok(false) => {
+            tracing::warn!(
+                credential_id = %credential_id,
+                "create_provider: sync already in progress, skipping auto-sync"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                credential_id = %credential_id,
+                "create_provider: failed to acquire sync lock, skipping auto-sync"
+            );
+        }
+    }
 
     Ok(Json(map_provider(&credential)))
 }
@@ -526,8 +549,7 @@ async fn list_provider_models(
         "list_provider_models request received"
     );
 
-    // Verify user owns this credential (row-level security enforced by get_provider_credential)
-    state
+    let credential = state
         .database
         .get_provider_credential(token, &provider_id)
         .await
@@ -556,7 +578,11 @@ async fn list_provider_models(
             internal_error(error)
         })?;
 
-    Ok(Json(models.iter().map(map_model).collect()))
+    let cred_enabled = credential.enabled;
+
+    Ok(Json(
+        models.iter().map(|m| map_model(m, cred_enabled)).collect(),
+    ))
 }
 
 // ── Virtual key handlers ──────────────────────────────────────────────────────
@@ -701,7 +727,7 @@ async fn list_models(
             error!(error = %error, token_fingerprint = %token_fingerprint(token), "list_models failed");
             internal_error(error)
         })?;
-    Ok(Json(models.iter().map(map_model).collect()))
+    Ok(Json(models.iter().map(|m| map_model(m, true)).collect()))
 }
 
 #[tracing::instrument(skip(state, auth))]
@@ -722,7 +748,7 @@ async fn get_model(
             internal_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Model not found".into()))?;
-    Ok(Json(map_model(&model)))
+    Ok(Json(map_model(&model, true)))
 }
 
 // ── Proxy handler ─────────────────────────────────────────────────────────────
@@ -945,7 +971,7 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
     }
 }
 
-fn map_model(model: &ModelDefinition) -> ModelResponse {
+fn map_model(model: &ModelDefinition, enabled: bool) -> ModelResponse {
     ModelResponse {
         id: model.id.to_sql(),
         alias: model.alias.clone(),
@@ -953,7 +979,7 @@ fn map_model(model: &ModelDefinition) -> ModelResponse {
         provider: model.provider.clone(),
         upstream_model: model.upstream_model.clone(),
         description: model.description.clone(),
-        enabled: true,
+        enabled,
         context_window_tokens: model.context_window_tokens,
         max_output_tokens: model.max_output_tokens,
         supports_streaming: model.supports_streaming,

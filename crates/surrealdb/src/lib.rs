@@ -176,7 +176,15 @@ impl Database {
         let token_str = token.access.into_insecure_token();
         let user = user_client
             .query("RETURN fn::get_current_user();")
-            .await?
+            .await
+            .map_err(|e| {
+                let msg = e.to_string().to_lowercase();
+                if msg.contains("account is disabled") {
+                    DatabaseError::InvalidConfig("account is disabled".into())
+                } else {
+                    DatabaseError::from(e)
+                }
+            })?
             .take::<Option<User>>(0)?
             .ok_or_else(|| DatabaseError::NotFound("signed in user was not found".into()))?;
 
@@ -691,7 +699,7 @@ impl ProxySession {
 
 fn parse_thing(value: &str) -> Result<RecordId, DatabaseError> {
     RecordId::parse_simple(value)
-        .map_err(|_| DatabaseError::InvalidConfig(format!("invalid record id: {value}")))
+        .map_err(|err| DatabaseError::InvalidConfig(format!("invalid record id: {value}: {err}")))
 }
 
 #[cfg(test)]
