@@ -16,17 +16,13 @@ import {
   updateProvider,
   updateVirtualKey,
 } from "@/lib/api";
-import type { FieldState, ProviderUpdateInput, VirtualKeyUpdateInput } from "@/lib/types";
+import type { FieldState, OnboardingStep, ProviderUpdateInput, VirtualKeyUpdateInput } from "@/lib/types";
 
 function parseList(value: FormDataEntryValue | null) {
   return String(value ?? "")
     .split(/[\n,]/)
     .map((item) => item.trim())
     .filter(Boolean);
-}
-
-function parseMultiSelectList(values: FormDataEntryValue[]) {
-  return values.map((v) => String(v).trim()).filter(Boolean);
 }
 
 function parseRoutes(formData: FormData) {
@@ -95,12 +91,67 @@ export async function signUpAction(_: FieldState, formData: FormData): Promise<F
     return handleError(error);
   }
 
-  redirect("/");
+  redirect("/onboarding?step=1");
 }
 
 export async function signOutAction() {
   await signOut();
   redirect("/signin");
+}
+
+export async function onboardingSkipAction() {
+  redirect("/providers");
+}
+
+export async function onboardingStepAction(
+  _: FieldState,
+  formData: FormData,
+): Promise<FieldState> {
+  const step = Number(formData.get("step") ?? 1) as OnboardingStep;
+  const action = String(formData.get("action") ?? "next");
+
+  if (action === "skip") {
+    redirect("/providers");
+  }
+
+  if (step === 1) {
+    redirect("/onboarding?step=2");
+  }
+
+  if (step === 2) {
+    try {
+      await createProvider({
+        provider: "google-genai",
+        label: String(formData.get("label") ?? "Default Provider").trim(),
+        api_key: String(formData.get("apiKey") ?? "").trim(),
+        tags: parseList(formData.get("tags")),
+      });
+    } catch (error) {
+      return handleError(error);
+    }
+
+    revalidatePath("/providers");
+    redirect("/onboarding?step=3");
+  }
+
+  if (step === 3) {
+    try {
+      await createVirtualKey({
+        name: String(formData.get("name") ?? "Default Key").trim(),
+        allowed_models: [],
+        model_routes: [],
+        tags: parseList(formData.get("tags")),
+        expires_at: null,
+      });
+    } catch (error) {
+      return handleError(error);
+    }
+
+    revalidatePath("/virtual-keys");
+    redirect("/");
+  }
+
+  redirect("/");
 }
 
 export async function createProviderAction(
@@ -163,7 +214,6 @@ export async function createVirtualKeyAction(
   try {
     const created = await createVirtualKey({
       name: String(formData.get("name") ?? "").trim(),
-      // Create with no model scoping — user configures this after sync on the detail page
       allowed_models: [],
       model_routes: [],
       tags: parseList(formData.get("tags")),
@@ -185,7 +235,6 @@ export async function createVirtualKeyAction(
 
 export async function updateVirtualKeyAction(keyId: string, formData: FormData) {
   const model_routes = parseRoutes(formData);
-  // allowed_models must match route aliases exactly — derive it from routes
   const allowed_models = model_routes.map((r) => r.model_alias);
 
   const input: VirtualKeyUpdateInput = {
@@ -208,7 +257,6 @@ export async function updateVirtualKeyFormAction(
   _: FieldState,
   formData: FormData,
 ): Promise<FieldState> {
-  // Validate for duplicate model aliases before hitting the API
   const aliases = formData
     .getAll("routeModelAlias")
     .map((v) => String(v).trim())

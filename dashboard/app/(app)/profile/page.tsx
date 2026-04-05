@@ -1,7 +1,12 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/api";
-import { SectionHeader, StatusPill, Surface } from "@/components/ui";
+import { SectionHeader, StatusPill } from "@/components/ui";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Separator } from "@/components/ui/separator";
 
 async function updateProfileAction(formData: FormData) {
   "use server";
@@ -30,7 +35,7 @@ export default async function ProfilePage() {
   const user = await getCurrentUser();
 
   return (
-    <>
+    <div className="flex flex-col gap-6">
       <SectionHeader
         title="Profile"
         description="Manage your account identity and settings."
@@ -38,63 +43,79 @@ export default async function ProfilePage() {
           <StatusPill
             label={user.enabled ? "active" : "disabled"}
             tone={user.enabled ? "success" : "neutral"}
+            pulse={user.enabled}
           />
         }
       />
 
-      <div className="panel-grid">
-        {/* Account info */}
-        <Surface>
-          <div className="surface__title-row">
-            <div>
-              <p className="eyebrow">Account</p>
-              <h2>Identity</h2>
+      <div className="grid gap-6 lg:grid-cols-2">
+        {/* Account identity */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-sm font-semibold tracking-tight">Account identity</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="rounded-md bg-muted/30 px-4 py-3">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  User ID
+                </p>
+                <p className="mt-1 font-mono text-sm font-medium">{user.id}</p>
+              </div>
+              <div className="rounded-md bg-muted/30 px-4 py-3">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  Email
+                </p>
+                <p className="mt-1 text-sm font-medium">{user.email}</p>
+              </div>
+              <div className="rounded-md bg-muted/30 px-4 py-3">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  Display name
+                </p>
+                <p className="mt-1 text-sm font-medium">{user.name}</p>
+              </div>
+              <div className="rounded-md bg-muted/30 px-4 py-3">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                  Status
+                </p>
+                <div className="mt-1">
+                  <StatusPill
+                    label={user.enabled ? "active" : "disabled"}
+                    tone={user.enabled ? "success" : "neutral"}
+                  />
+                </div>
+              </div>
             </div>
-          </div>
-          <dl className="meta-list">
-            <div>
-              <dt>User ID</dt>
-              <dd className="mono">{user.id}</dd>
-            </div>
-            <div>
-              <dt>Email</dt>
-              <dd>{user.email}</dd>
-            </div>
-            <div>
-              <dt>Display name</dt>
-              <dd>{user.name}</dd>
-            </div>
-            <div>
-              <dt>Account status</dt>
-              <dd>
-                <StatusPill
-                  label={user.enabled ? "active" : "disabled"}
-                  tone={user.enabled ? "success" : "neutral"}
-                />
-              </dd>
-            </div>
-          </dl>
-        </Surface>
+          </CardContent>
+        </Card>
 
-        {/* Update name */}
-        <Surface>
-          <div className="surface__title-row">
-            <div>
-              <p className="eyebrow">Edit</p>
-              <h2>Display name</h2>
-            </div>
-          </div>
-          <form className="panel-form" action={updateProfileAction}>
-            <label className="field">
-              <span>Name</span>
-              <input name="name" defaultValue={user.name} required />
-            </label>
-            <button type="submit" className="primary-button">
-              Save changes
-            </button>
-          </form>
-        </Surface>
+        {/* Update profile */}
+        <Card className="border-border/50">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-sm font-semibold tracking-tight">Update profile</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form action={updateProfileAction} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-2">
+                <Label htmlFor="name" className="text-xs">
+                  Display name
+                </Label>
+                <Input
+                  id="name"
+                  name="name"
+                  defaultValue={user.name}
+                  required
+                  className="h-9"
+                />
+              </div>
+              <Separator />
+              <Button type="submit" size="sm" className="w-fit">
+                Save changes
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
-    </>
+    </div>
   );
 }

@@ -1,5 +1,13 @@
 import Link from "next/link";
-import { Server, KeyRound, Cpu, Activity } from "lucide-react";
+import {
+  Server,
+  KeyRound,
+  Cpu,
+  Activity,
+  ArrowUpRight,
+  TrendingUp,
+  Shield,
+} from "lucide-react";
 
 import { listModels, listProviders, listVirtualKeys } from "@/lib/api";
 import {
@@ -11,7 +19,11 @@ import {
 } from "@/lib/format";
 
 import { ProviderBarChart, SyncDonut } from "@/components/charts";
-import { ResourceLinkCard, SectionHeader, StatusPill, Surface } from "@/components/ui";
+import { SectionHeader, StatusPill } from "@/components/ui";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { cn } from "@/lib/utils";
 
 function toneForStatus(status: string) {
   switch (status) {
@@ -38,211 +50,309 @@ export default async function OverviewPage() {
   const recentProviders = [...providers]
     .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1))
     .slice(0, 4);
-  const recentKeys = [...keys].sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1)).slice(0, 4);
+  const recentKeys = [...keys]
+    .sort((a, b) => (b.updated_at > a.updated_at ? 1 : -1))
+    .slice(0, 4);
 
-  const barData = Object.entries(stats.modelsByProvider).map(([name, models]) => ({
-    name,
-    models,
-  }));
+  const barData = Object.entries(stats.modelsByProvider).map(
+    ([name, models]) => ({ name, models }),
+  );
+
+  const statCards = [
+    {
+      icon: Server,
+      value: stats.providerCount,
+      label: "Provider credentials",
+      sub: `${stats.activeProviders} enabled`,
+      accent: "text-indigo-600",
+      bg: "bg-indigo-50",
+    },
+    {
+      icon: KeyRound,
+      value: stats.keyCount,
+      label: "Virtual keys",
+      sub: `${stats.activeKeys} live`,
+      accent: "text-emerald-600",
+      bg: "bg-emerald-50",
+    },
+    {
+      icon: Cpu,
+      value: stats.modelCount,
+      label: "Usable models",
+      sub: "From synced catalog",
+      accent: "text-sky-600",
+      bg: "bg-sky-50",
+    },
+    {
+      icon: Activity,
+      value: stats.syncingProviders,
+      label: "In motion",
+      sub: "Pending or syncing",
+      accent: "text-amber-600",
+      bg: "bg-amber-50",
+    },
+  ] as const;
+
+  const scopedKeys = keys.filter((k) => k.allowed_models.length > 0).length;
+  const unrestrictedKeys = keys.filter(
+    (k) => k.allowed_models.length === 0,
+  ).length;
+  const routedKeys = keys.filter((k) => k.model_routes.length > 0).length;
 
   return (
-    <>
+    <div className="flex flex-col gap-8">
+      {/* Header */}
       <SectionHeader
         title="Gateway overview"
         description="Live control-plane data from your ValyMux API."
         actions={
-          <>
-            <Link className="secondary-button" href="/providers">
+          <div className="flex items-center gap-2">
+            <Link
+              href="/providers"
+              className="inline-flex items-center gap-1.5 rounded-md border border-border bg-background px-3 py-1.5 text-sm font-medium transition-colors hover:bg-muted/60"
+            >
+              <Server className="size-3.5" />
               Providers
             </Link>
-            <Link className="primary-button" href="/virtual-keys">
+            <Link
+              href="/virtual-keys"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              <KeyRound className="size-3.5" />
               Virtual keys
             </Link>
-          </>
+          </div>
         }
       />
 
       {/* Stat cards */}
-      <div className="stat-cards">
-        <div className="stat-card">
-          <div className="stat-card__icon">
-            <Server size={16} />
-          </div>
-          <div className="stat-card__body">
-            <div className="stat-card__value">{stats.providerCount}</div>
-            <div className="stat-card__label">Provider credentials</div>
-            <div className="stat-card__sub">{stats.activeProviders} enabled</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card__icon">
-            <KeyRound size={16} />
-          </div>
-          <div className="stat-card__body">
-            <div className="stat-card__value">{stats.keyCount}</div>
-            <div className="stat-card__label">Virtual keys</div>
-            <div className="stat-card__sub">{stats.activeKeys} live</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card__icon">
-            <Cpu size={16} />
-          </div>
-          <div className="stat-card__body">
-            <div className="stat-card__value">{stats.modelCount}</div>
-            <div className="stat-card__label">Usable models</div>
-            <div className="stat-card__sub">From synced catalog</div>
-          </div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-card__icon">
-            <Activity size={16} />
-          </div>
-          <div className="stat-card__body">
-            <div className="stat-card__value">{stats.syncingProviders}</div>
-            <div className="stat-card__label">In motion</div>
-            <div className="stat-card__sub">Pending or syncing</div>
-          </div>
-        </div>
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        {statCards.map((s) => (
+          <Card key={s.label}>
+            <CardContent className="flex items-center gap-4 px-5 py-5">
+              <div
+                className={cn(
+                  "flex size-9 shrink-0 items-center justify-center rounded-md",
+                  s.bg,
+                )}
+              >
+                <s.icon className={cn("size-4", s.accent)} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-2xl font-bold tracking-tight">{s.value}</p>
+                <p className="text-xs uppercase tracking-wide text-muted-foreground">
+                  {s.label}
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground/70">
+                  {s.sub}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
       </div>
 
       {/* Charts row */}
-      <div className="split-grid">
-        <Surface>
-          <div className="surface__title-row">
-            <div>
-              <p className="eyebrow">Catalog supply</p>
-              <h2>Models by provider</h2>
-            </div>
-          </div>
-          <ProviderBarChart data={barData} />
-        </Surface>
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              Catalog supply
+            </p>
+            <CardTitle>Models by provider</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ProviderBarChart data={barData} />
+          </CardContent>
+        </Card>
 
-        <Surface>
-          <div className="surface__title-row">
-            <div>
-              <p className="eyebrow">Sync health</p>
-              <h2>Provider readiness</h2>
+        <Card>
+          <CardHeader>
+            <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+              Sync health
+            </p>
+            <CardTitle>Provider readiness</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <SyncDonut
+              completed={stats.completedProviders}
+              failed={stats.failedProviders}
+              syncing={stats.syncingProviders}
+            />
+            <Separator />
+            <div className="grid grid-cols-3 gap-4">
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Completed</p>
+                <p className="text-lg font-bold tracking-tight">
+                  {stats.completedProviders}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Failed</p>
+                <p className="text-lg font-bold tracking-tight">
+                  {stats.failedProviders}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-xs text-muted-foreground">Expiring keys</p>
+                <p className="text-lg font-bold tracking-tight">
+                  {stats.expiringKeys}
+                </p>
+              </div>
             </div>
-          </div>
-          <SyncDonut
-            completed={stats.completedProviders}
-            failed={stats.failedProviders}
-            syncing={stats.syncingProviders}
-          />
-          <div className="stat-strip" style={{ marginTop: "1rem" }}>
-            <div className="stat-strip__item">
-              <span>Completed</span>
-              <strong>{stats.completedProviders}</strong>
-            </div>
-            <div className="stat-strip__item">
-              <span>Failed</span>
-              <strong>{stats.failedProviders}</strong>
-            </div>
-            <div className="stat-strip__item">
-              <span>Expiring keys</span>
-              <strong>{stats.expiringKeys}</strong>
-            </div>
-          </div>
-        </Surface>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Recent activity */}
-      <div className="split-grid">
-        <Surface>
-          <div className="surface__title-row">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        {/* Recent providers */}
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
             <div>
-              <p className="eyebrow">Providers</p>
-              <h2>Recent activity</h2>
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                Providers
+              </p>
+              <CardTitle>Recent activity</CardTitle>
             </div>
-            <Link href="/providers" className="ghost-button" style={{ fontSize: "0.8125rem" }}>
+            <Link
+              href="/providers"
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
               View all
+              <ArrowUpRight className="size-3" />
             </Link>
-          </div>
-          <div className="stack">
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
             {recentProviders.length === 0 ? (
-              <p className="text-muted">No provider credentials yet.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No provider credentials yet.
+              </p>
             ) : (
               recentProviders.map((provider) => (
-                <ResourceLinkCard
+                <Link
                   key={provider.id}
                   href={`/providers/${provider.id}`}
-                  kicker={provider.provider}
-                  title={provider.label}
-                  body={`Updated ${formatRelative(provider.updated_at)} · ${compactNumber(provider.model_count)} models`}
-                  right={
-                    <StatusPill
-                      label={provider.sync_status}
-                      tone={toneForStatus(provider.sync_status)}
-                      pulse={provider.sync_status === "syncing"}
-                    />
-                  }
-                />
+                  className="flex items-start justify-between gap-4 rounded-md px-3 py-3 transition-colors hover:bg-muted/30"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                      {provider.provider}
+                    </p>
+                    <p className="truncate text-sm font-semibold tracking-tight text-foreground">
+                      {provider.label}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Updated {formatRelative(provider.updated_at)} &middot;{" "}
+                      {compactNumber(provider.model_count)} models
+                    </p>
+                  </div>
+                  <StatusPill
+                    label={provider.sync_status}
+                    tone={toneForStatus(provider.sync_status)}
+                    pulse={provider.sync_status === "syncing"}
+                  />
+                </Link>
               ))
             )}
-          </div>
-        </Surface>
+          </CardContent>
+        </Card>
 
-        <Surface>
-          <div className="surface__title-row">
+        {/* Recent keys */}
+        <Card>
+          <CardHeader className="flex-row items-center justify-between">
             <div>
-              <p className="eyebrow">Virtual keys</p>
-              <h2>Recent keys</h2>
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                Virtual keys
+              </p>
+              <CardTitle>Recent keys</CardTitle>
             </div>
-            <Link href="/virtual-keys" className="ghost-button" style={{ fontSize: "0.8125rem" }}>
+            <Link
+              href="/virtual-keys"
+              className="flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
               View all
+              <ArrowUpRight className="size-3" />
             </Link>
-          </div>
-          <div className="stack">
+          </CardHeader>
+          <CardContent className="flex flex-col gap-1">
             {recentKeys.length === 0 ? (
-              <p className="text-muted">No virtual keys yet.</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">
+                No virtual keys yet.
+              </p>
             ) : (
               recentKeys.map((key) => (
-                <ResourceLinkCard
+                <Link
                   key={key.id}
                   href={`/virtual-keys/${key.id}`}
-                  kicker={key.key_prefix}
-                  title={key.name}
-                  body={`${summarizeAllowedModels(key)} · ${summarizeRoutes(key)} · ${formatRelative(key.updated_at)}`}
-                  right={
-                    <StatusPill
-                      label={key.enabled ? "enabled" : "disabled"}
-                      tone={key.enabled ? "success" : "neutral"}
-                    />
-                  }
-                />
+                  className="flex items-start justify-between gap-4 rounded-md px-3 py-3 transition-colors hover:bg-muted/30"
+                >
+                  <div className="min-w-0">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
+                      {key.key_prefix}
+                    </p>
+                    <p className="truncate text-sm font-semibold tracking-tight text-foreground">
+                      {key.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {summarizeAllowedModels(key)} &middot;{" "}
+                      {summarizeRoutes(key)} &middot;{" "}
+                      {formatRelative(key.updated_at)}
+                    </p>
+                  </div>
+                  <StatusPill
+                    label={key.enabled ? "enabled" : "disabled"}
+                    tone={key.enabled ? "success" : "neutral"}
+                  />
+                </Link>
               ))
             )}
-          </div>
-        </Surface>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Key scope overview */}
-      <Surface>
-        <div className="surface__title-row">
-          <div>
-            <p className="eyebrow">Access posture</p>
-            <h2>Virtual key scope distribution</h2>
+      {/* Access posture */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center gap-2">
+            <Shield className="size-4 text-muted-foreground" />
+            <div>
+              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">
+                Access posture
+              </p>
+              <CardTitle>Virtual key scope distribution</CardTitle>
+            </div>
           </div>
-        </div>
-        <div className="stat-strip">
-          <div className="stat-strip__item">
-            <span>Scoped keys</span>
-            <strong>{keys.filter((key) => key.allowed_models.length > 0).length}</strong>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-6">
+            <div className="rounded-md bg-muted/30 px-5 py-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Scoped keys
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight">
+                {scopedKeys}
+              </p>
+            </div>
+            <div className="rounded-md bg-muted/30 px-5 py-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Unrestricted keys
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight">
+                {unrestrictedKeys}
+              </p>
+            </div>
+            <div className="rounded-md bg-muted/30 px-5 py-4 text-center">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Routed keys
+              </p>
+              <p className="mt-1 text-2xl font-bold tracking-tight">
+                {routedKeys}
+              </p>
+            </div>
           </div>
-          <div className="stat-strip__item">
-            <span>Unrestricted keys</span>
-            <strong>{keys.filter((key) => key.allowed_models.length === 0).length}</strong>
-          </div>
-          <div className="stat-strip__item">
-            <span>Routed keys</span>
-            <strong>{keys.filter((key) => key.model_routes.length > 0).length}</strong>
-          </div>
-        </div>
-      </Surface>
-    </>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

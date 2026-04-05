@@ -1,8 +1,21 @@
 import { deleteVirtualKeyAction, updateVirtualKeyFormAction } from "@/app/actions";
 import { VirtualKeyEditor } from "@/components/virtual-key-form";
-import { EmptyState, MetaList, SectionHeader, StatusPill, Surface } from "@/components/ui";
+import { MetaList, SectionHeader, StatusPill, EmptyState } from "@/components/ui";
 import { getVirtualKey, listModels, listProviders } from "@/lib/api";
 import { formatDateTime, summarizeAllowedModels, summarizeRoutes } from "@/lib/format";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Separator } from "@/components/ui/separator";
+import { Route, Trash2 } from "lucide-react";
 
 export default async function VirtualKeyDetailPage({
   params,
@@ -21,92 +34,125 @@ export default async function VirtualKeyDetailPage({
       <SectionHeader
         eyebrow="Virtual key"
         title={key.name}
-        description={`Prefix: ${key.key_prefix} — Configure allowed models and routing below.`}
+        description={`Prefix: ${key.key_prefix}`}
         actions={
           <StatusPill
             label={key.enabled ? "enabled" : "disabled"}
             tone={key.enabled ? "success" : "neutral"}
+            pulse={key.enabled}
           />
         }
       />
 
-      <div className="panel-grid">
-        <div className="stack">
+      <div className="mt-6 grid grid-cols-1 gap-6 xl:grid-cols-[1fr_400px]">
+        {/* Left column */}
+        <div className="flex flex-col gap-6">
           {/* Metadata */}
-          <Surface>
-            <div className="surface__title-row">
-              <div>
-                <p className="eyebrow">Metadata</p>
-                <h2>Credential posture</h2>
-              </div>
-            </div>
-            <MetaList
-              items={[
-                { label: "Record ID", value: <span className="mono">{key.id}</span> },
-                { label: "Key prefix", value: <span className="inline-code">{key.key_prefix}</span> },
-                { label: "Allowed models", value: summarizeAllowedModels(key) },
-                { label: "Routes", value: summarizeRoutes(key) },
-                { label: "Expires", value: formatDateTime(key.expires_at) },
-                { label: "Last used", value: formatDateTime(key.last_used_at) },
-                { label: "Updated", value: formatDateTime(key.updated_at) },
-                { label: "Created", value: formatDateTime(key.created_at) },
-              ]}
-            />
-          </Surface>
+          <Card className="border-border/50">
+            <CardHeader className="pb-4">
+              <CardTitle className="text-[0.88rem] font-semibold tracking-[-0.02em]">
+                Credential posture
+              </CardTitle>
+            </CardHeader>
+            <Separator />
+            <CardContent className="pt-5">
+              <MetaList
+                items={[
+                  {
+                    label: "Record ID",
+                    value: <span className="font-mono text-[0.78rem]">{key.id}</span>,
+                  },
+                  {
+                    label: "Key prefix",
+                    value: (
+                      <Badge
+                        variant="outline"
+                        className="rounded-md font-mono text-[0.7rem] tracking-tight"
+                      >
+                        {key.key_prefix}
+                      </Badge>
+                    ),
+                  },
+                  { label: "Allowed models", value: summarizeAllowedModels(key) },
+                  { label: "Routes", value: summarizeRoutes(key) },
+                  { label: "Expires", value: formatDateTime(key.expires_at) },
+                  { label: "Last used", value: formatDateTime(key.last_used_at) },
+                  { label: "Updated", value: formatDateTime(key.updated_at) },
+                  { label: "Created", value: formatDateTime(key.created_at) },
+                ]}
+              />
+            </CardContent>
+          </Card>
 
           {/* Routes */}
-          <Surface>
-            <div className="surface__title-row">
-              <div>
-                <p className="eyebrow">Routing</p>
-                <h2>Resolved provider paths</h2>
+          <Card className="border-border/50">
+            <CardHeader className="pb-4">
+              <div className="flex items-center gap-2">
+                <Route className="size-4 text-muted-foreground" />
+                <CardTitle className="text-[0.88rem] font-semibold tracking-[-0.02em]">
+                  Resolved provider paths
+                </CardTitle>
               </div>
-            </div>
-
-            {key.model_routes.length === 0 ? (
-              <EmptyState
-                title="No explicit routes"
-                body="Add routes below to map specific model aliases to provider credentials."
-              />
-            ) : (
-              <table className="data-table">
-                <thead>
-                  <tr>
-                    <th>Model alias</th>
-                    <th>Provider</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {key.model_routes.map((route) => (
-                    <tr key={`${route.model_alias}-${route.provider_credential_id}`}>
-                      <td>
-                        <div className="data-table__title">
-                          <strong className="mono">{route.model_alias}</strong>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="data-table__title">
-                          <strong>{route.provider_label}</strong>
-                          <span>{route.provider}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-          </Surface>
+            </CardHeader>
+            <CardContent className="px-0 pb-0">
+              {key.model_routes.length === 0 ? (
+                <div className="px-6 pb-6">
+                  <EmptyState
+                    title="No explicit routes"
+                    body="Add routes below to map specific model aliases to provider credentials."
+                  />
+                </div>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="pl-6 text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        Model alias
+                      </TableHead>
+                      <TableHead className="text-xs font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        Provider
+                      </TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {key.model_routes.map((route) => (
+                      <TableRow key={`${route.model_alias}-${route.provider_credential_id}`}>
+                        <TableCell className="pl-6">
+                          <span className="font-mono text-[0.8rem] font-medium tracking-tight text-foreground">
+                            {route.model_alias}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex flex-col">
+                            <span className="text-[0.8rem] font-medium text-foreground">
+                              {route.provider_label}
+                            </span>
+                            <span className="text-[0.72rem] text-muted-foreground">
+                              {route.provider}
+                            </span>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              )}
+            </CardContent>
+          </Card>
         </div>
 
-        {/* Edit form with MultiSelect */}
-        <div>
-          <Surface>
-            <div className="surface__title-row">
-              <div>
-                <p className="eyebrow">Edit</p>
-                <h2>Scope & routing</h2>
-              </div>
-            </div>
+        {/* Right column - Edit form */}
+        <Card className="border-border/50 self-start">
+          <CardHeader>
+            <CardTitle className="text-[0.88rem] font-semibold tracking-[-0.02em]">
+              Scope & routing
+            </CardTitle>
+            <p className="mt-1 text-[0.78rem] leading-relaxed text-muted-foreground">
+              Configure allowed models and provider routing for this key.
+            </p>
+          </CardHeader>
+          <Separator />
+          <CardContent className="pt-5">
             <VirtualKeyEditor
               providers={providers}
               action={updateVirtualKeyFormAction.bind(null, key.id)}
@@ -115,15 +161,16 @@ export default async function VirtualKeyDetailPage({
               models={models}
             />
 
-            <div className="table-actions" style={{ marginTop: "1.25rem" }}>
-              <form className="form-inline" action={deleteVirtualKeyAction.bind(null, key.id)}>
-                <button className="ghost-button" type="submit">
-                  Delete key
-                </button>
-              </form>
-            </div>
-          </Surface>
-        </div>
+            <Separator className="my-5" />
+
+            <form action={deleteVirtualKeyAction.bind(null, key.id)}>
+              <Button variant="destructive" size="sm" type="submit" className="gap-1.5">
+                <Trash2 className="size-3.5" />
+                Delete key
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
       </div>
     </>
   );

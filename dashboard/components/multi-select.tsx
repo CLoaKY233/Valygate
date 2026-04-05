@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { ChevronDown, X } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Check, ChevronsUpDown, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 export type SelectOption = {
   value: string;
@@ -13,7 +16,7 @@ export function MultiSelect({
   name,
   options,
   defaultSelected = [],
-  placeholder = "Select options…",
+  placeholder = "Select options...",
 }: {
   name: string;
   options: SelectOption[];
@@ -25,16 +28,16 @@ export function MultiSelect({
   const [search, setSearch] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Close on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      setOpen(false);
     }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
+
+  useEffect(() => {
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [handleClickOutside]);
 
   const filtered = options.filter((opt) =>
     search
@@ -49,106 +52,132 @@ export function MultiSelect({
     );
   }
 
-  function removeSelected(value: string) {
-    setSelected((prev) => prev.filter((v) => v !== value));
-  }
-
-  function selectAll() {
-    setSelected(options.map((o) => o.value));
-  }
-
-  function clearAll() {
-    setSelected([]);
-  }
-
   const selectedOptions = options.filter((o) => selected.includes(o.value));
 
   return (
-    <div className="multi-select" ref={containerRef}>
-      {/* Hidden inputs for form submission */}
+    <div className="relative" ref={containerRef}>
       {selected.map((val) => (
         <input key={val} type="hidden" name={name} value={val} />
       ))}
 
-      <button
+      <Button
         type="button"
-        className="multi-select__trigger"
-        onClick={() => setOpen((prev) => !prev)}
+        variant="outline"
+        role="combobox"
         aria-expanded={open}
+        onClick={() => setOpen((prev) => !prev)}
+        className="h-8 w-full justify-between font-normal"
       >
-        <span style={{ color: selected.length === 0 ? "var(--text-faint)" : "var(--text)" }}>
+        <span className={cn("text-sm", selected.length === 0 && "text-muted-foreground")}>
           {selected.length === 0
             ? placeholder
             : `${selected.length} model${selected.length === 1 ? "" : "s"} selected`}
         </span>
-        <ChevronDown
-          size={14}
-          style={{
-            flexShrink: 0,
-            color: "var(--text-faint)",
-            transform: open ? "rotate(180deg)" : "rotate(0deg)",
-            transition: "transform 150ms",
-          }}
-        />
-      </button>
+        <ChevronsUpDown className="size-3.5 shrink-0 text-muted-foreground" />
+      </Button>
 
-      {open && (
-        <div className="multi-select__dropdown">
-          <div className="multi-select__search">
-            <input
-              autoFocus
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder="Search models…"
-              onClick={(e) => e.stopPropagation()}
-            />
-          </div>
+      <div
+        className={cn(
+          "absolute inset-x-0 top-[calc(100%+4px)] z-50 rounded-md border border-border bg-popover shadow-md transition-all duration-150",
+          open
+            ? "pointer-events-auto translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-1 opacity-0",
+        )}
+      >
+        <div className="border-b border-border p-2">
+          <input
+            autoFocus={open}
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search models..."
+            className="h-7 w-full rounded-md border border-input bg-transparent px-2 text-sm outline-none transition-colors focus:border-ring focus:ring-2 focus:ring-ring/20"
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
 
-          <div className="multi-select__list">
-            {filtered.length === 0 ? (
-              <div style={{ padding: "1rem", color: "var(--text-faint)", fontSize: "0.875rem" }}>
-                No models found
-              </div>
-            ) : (
-              filtered.map((opt) => (
-                <label key={opt.value} className="multi-select__item">
-                  <input
-                    type="checkbox"
-                    checked={selected.includes(opt.value)}
-                    onChange={() => toggle(opt.value)}
-                  />
-                  <div>
-                    <div className="multi-select__item-label">{opt.label}</div>
+        <div className="max-h-52 overflow-y-auto p-1">
+          {filtered.length === 0 ? (
+            <div className="py-3 text-center text-sm text-muted-foreground">
+              No models found
+            </div>
+          ) : (
+            filtered.map((opt) => {
+              const isSelected = selected.includes(opt.value);
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => toggle(opt.value)}
+                  className={cn(
+                    "flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+                    isSelected ? "bg-accent/60" : "hover:bg-accent/40",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-4 shrink-0 items-center justify-center rounded-[3px] border transition-colors",
+                      isSelected
+                        ? "border-primary bg-primary text-primary-foreground"
+                        : "border-input bg-transparent",
+                    )}
+                  >
+                    {isSelected && <Check className="size-3" strokeWidth={2.5} />}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[0.8rem] font-medium tracking-[-0.01em]">
+                      {opt.label}
+                    </div>
                     {opt.description && (
-                      <div className="multi-select__item-desc">{opt.description}</div>
+                      <div className="truncate font-mono text-[0.68rem] text-muted-foreground">
+                        {opt.description}
+                      </div>
                     )}
                   </div>
-                </label>
-              ))
-            )}
-          </div>
-
-          <div className="multi-select__actions">
-            <button type="button" className="multi-select__action-btn" onClick={selectAll}>
-              Select all
-            </button>
-            <span style={{ color: "var(--text-faint)", fontSize: "0.75rem" }}>·</span>
-            <button type="button" className="multi-select__action-btn" onClick={clearAll}>
-              Clear all
-            </button>
-          </div>
+                </button>
+              );
+            })
+          )}
         </div>
-      )}
+
+        <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
+          <button
+            type="button"
+            className="text-xs font-medium text-foreground transition-colors hover:text-primary hover:underline"
+            onClick={() => setSelected(options.map((o) => o.value))}
+          >
+            Select all
+          </button>
+          <span className="text-xs text-muted-foreground/50">|</span>
+          <button
+            type="button"
+            className="text-xs font-medium text-foreground transition-colors hover:text-primary hover:underline"
+            onClick={() => setSelected([])}
+          >
+            Clear
+          </button>
+          <span className="ml-auto text-[0.65rem] tabular-nums text-muted-foreground">
+            {selected.length}/{options.length}
+          </span>
+        </div>
+      </div>
 
       {selectedOptions.length > 0 && (
-        <div className="multi-select__pills">
+        <div className="mt-2 flex flex-wrap gap-1">
           {selectedOptions.map((opt) => (
-            <span key={opt.value} className="multi-select__pill">
+            <Badge
+              key={opt.value}
+              variant="secondary"
+              className="gap-1 rounded-md pr-1 text-[0.68rem]"
+            >
               {opt.label}
-              <button type="button" onClick={() => removeSelected(opt.value)} aria-label={`Remove ${opt.label}`}>
-                <X size={10} />
+              <button
+                type="button"
+                onClick={() => setSelected((prev) => prev.filter((v) => v !== opt.value))}
+                className="rounded-[3px] p-0.5 transition-colors hover:bg-muted-foreground/20"
+              >
+                <X className="size-2.5" />
               </button>
-            </span>
+            </Badge>
           ))}
         </div>
       )}

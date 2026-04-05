@@ -83,6 +83,20 @@ export type Model = {
   supports_parallel_tool_calls: boolean;
 };
 
+export type RequestLog = {
+  id: string;
+  virtual_key_id: string;
+  model_alias: string;
+  provider: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  latency_ms: number;
+  status: "success" | "error";
+  error_message: string | null;
+  created_at: string;
+};
+
 export type ProviderInput = {
   provider: "google-genai";
   label: string;
@@ -120,3 +134,26 @@ export type FieldState = {
   rawKey?: string;
   createdKeyId?: string;
 };
+
+export type OnboardingStep = 1 | 2 | 3 | 4;
+
+export type OverviewStats = {
+  providerCount: number;
+  activeProviders: number;
+  syncingProviders: number;
+  failedProviders: number;
+  completedProviders: number;
+  keyCount: number;
+  activeKeys: number;
+  expiringKeys: number;
+  modelCount: number;
+  modelsByProvider: Record<string, number>;
+};
+
+export type NavItem = {
+  href: string;
+  label: string;
+  icon: string;
+};
+
+export type Tone = "neutral" | "success" | "warning" | "danger" | "info";
