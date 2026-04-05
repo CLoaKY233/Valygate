@@ -50,7 +50,10 @@ pub struct ProviderCredential {
     pub user: RecordId,
     pub provider: String,
     pub label: String,
-    pub encrypted_api_key: String,
+    /// Absent from list/get API responses (omitted in SurrealQL functions).
+    /// Present only when the field is explicitly selected (e.g., internal audit).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encrypted_api_key: Option<String>,
     pub tags: Vec<String>,
     pub enabled: bool,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -69,7 +72,10 @@ impl fmt::Debug for ProviderCredential {
             .field("user", &self.user)
             .field("provider", &self.provider)
             .field("label", &self.label)
-            .field("encrypted_api_key", &"<redacted>")
+            .field(
+                "encrypted_api_key",
+                &self.encrypted_api_key.as_ref().map(|_| "<redacted>"),
+            )
             .field("tags", &self.tags)
             .field("enabled", &self.enabled)
             .field("last_used_at", &self.last_used_at)
@@ -97,20 +103,19 @@ pub struct VirtualApiKey {
     pub last_used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    #[serde(default)]
+    pub routes: Vec<VirtualKeyRoute>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 #[allow(clippy::struct_excessive_bools)]
-pub struct ModelCatalogEntry {
+pub struct ModelDefinition {
     pub id: RecordId,
-    pub user: RecordId,
-    pub provider_credential: RecordId,
     pub alias: String,
     pub provider: String,
     pub upstream_model: String,
     pub display_name: String,
     pub description: Option<String>,
-    pub enabled: bool,
     pub context_window_tokens: i64,
     pub max_output_tokens: i64,
     pub supports_streaming: bool,
@@ -128,6 +133,14 @@ pub struct ModelCatalogEntry {
     pub supports_parallel_tool_calls: bool,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+pub struct VirtualKeyRoute {
+    pub model_alias: String,
+    pub provider_credential_id: RecordId,
+    pub provider: String,
+    pub provider_label: String,
 }
 
 /// Input for a single discovered model to be synced into the catalog.
@@ -193,7 +206,7 @@ pub struct UpdateProfileInput {
     pub name: String,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+#[derive(Clone, Serialize, Deserialize, SurrealValue)]
 pub struct CreateProviderCredentialInput {
     pub provider: ProviderKind,
     pub label: String,
@@ -201,12 +214,34 @@ pub struct CreateProviderCredentialInput {
     pub tags: Vec<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+impl fmt::Debug for CreateProviderCredentialInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CreateProviderCredentialInput")
+            .field("provider", &self.provider)
+            .field("label", &self.label)
+            .field("api_key", &"<redacted>")
+            .field("tags", &self.tags)
+            .finish()
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, SurrealValue)]
 pub struct UpdateProviderCredentialInput {
     pub label: String,
     pub api_key: Option<String>,
     pub tags: Vec<String>,
     pub enabled: bool,
+}
+
+impl fmt::Debug for UpdateProviderCredentialInput {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("UpdateProviderCredentialInput")
+            .field("label", &self.label)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .field("tags", &self.tags)
+            .field("enabled", &self.enabled)
+            .finish()
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
@@ -215,6 +250,7 @@ pub struct CreateVirtualApiKeyInput {
     pub allowed_models: Vec<String>,
     pub tags: Vec<String>,
     pub expires_at: Option<DateTime<Utc>>,
+    pub routes: Vec<VirtualKeyRouteInput>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
@@ -224,6 +260,13 @@ pub struct UpdateVirtualApiKeyInput {
     pub tags: Vec<String>,
     pub enabled: bool,
     pub expires_at: Option<DateTime<Utc>>,
+    pub routes: Vec<VirtualKeyRouteInput>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
+pub struct VirtualKeyRouteInput {
+    pub model_alias: String,
+    pub provider_credential_id: RecordId,
 }
 
 #[derive(Clone, Serialize, Deserialize, SurrealValue)]
@@ -242,24 +285,40 @@ impl fmt::Debug for CreatedVirtualApiKey {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
-pub struct VerifiedVirtualApiKey {
-    pub key: VirtualApiKey,
-    pub user_id: RecordId,
+#[allow(clippy::struct_excessive_bools)]
+pub struct RouteModelInfo {
+    pub alias: String,
+    pub provider: String,
+    pub upstream_model: String,
+    pub context_window_tokens: i64,
+    pub max_output_tokens: i64,
+    pub supports_streaming: bool,
+    pub supports_thinking: bool,
+    pub thinking_required: bool,
+    pub supports_temperature: bool,
+    pub temperature_fixed_to: Option<f64>,
+    pub temperature_min: Option<f64>,
+    pub temperature_max: Option<f64>,
+    pub supports_top_p: bool,
+    pub supports_system_messages: bool,
+    pub supports_tools: bool,
+    pub supports_vision: bool,
+    pub supports_json_mode: bool,
+    pub supports_parallel_tool_calls: bool,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct ResolvedProxyRoute {
-    pub user: User,
-    pub key: VirtualApiKey,
-    pub model: ModelCatalogEntry,
-    pub provider_credential: ProviderCredential,
+    pub virtual_key_id: RecordId,
+    pub user_id: RecordId,
+    pub model: RouteModelInfo,
+    pub provider_credential_id: RecordId,
+    pub provider: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, SurrealValue)]
 pub struct RequestLogInput {
     pub request_id: String,
-    pub user_id: String,
-    pub virtual_api_key_id: Option<String>,
     pub model_alias: String,
     pub provider: String,
     pub upstream_model: String,

@@ -1,5 +1,5 @@
 use anyhow::Result;
-use axum::routing::get;
+use axum::{extract::DefaultBodyLimit, routing::get};
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use valymux::{
@@ -26,6 +26,7 @@ async fn main() -> Result<()> {
     let app = axum::Router::new()
         .route("/", get(root_handler))
         .merge(v1::router())
+        .layer(DefaultBodyLimit::max(10 * 1024 * 1024)) // 10 MiB — covers large prompts
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 

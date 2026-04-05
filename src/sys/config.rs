@@ -48,9 +48,18 @@ pub struct AppConfig {
 
     pub surreal_database: String,
 
-    pub surreal_username: String,
+    /// Root username - only used for manual schema migrations via CLI/Surrealist.
+    /// The server never uses this at runtime.
+    #[serde(default)]
+    pub surreal_username: Option<String>,
 
-    pub surreal_password: String,
+    /// Root password - only used for manual schema migrations via CLI/Surrealist.
+    /// The server never uses this at runtime.
+    #[serde(default)]
+    pub surreal_password: Option<String>,
+
+    #[serde(default)]
+    pub valymux_db_service_key: String,
 
     pub surreal_encryption_key: String,
 }
@@ -74,9 +83,10 @@ impl fmt::Debug for AppConfig {
             .field("surreal_url", &self.surreal_url)
             .field("surreal_namespace", &self.surreal_namespace)
             .field("surreal_database", &self.surreal_database)
-            .field("surreal_username", &self.surreal_username)
-            .field("surreal_password", &"<REDACTED>")
-            .field("surreal_encryption_key", &"<REDACTED>")
+            .field("surreal_username", &"[OPTIONAL/REDACTED]")
+            .field("surreal_password", &"[OPTIONAL/REDACTED]")
+            .field("valymux_db_service_key", &"[REDACTED]")
+            .field("surreal_encryption_key", &"[REDACTED]")
             .finish()
     }
 }
@@ -101,6 +111,7 @@ impl AppConfig {
             surreal_database: self.surreal_database.clone(),
             surreal_username: self.surreal_username.clone(),
             surreal_password: self.surreal_password.clone(),
+            surreal_service_key: self.valymux_db_service_key.clone(),
             surreal_encryption_key: self.surreal_encryption_key.clone(),
         }
     }

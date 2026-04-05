@@ -10,10 +10,9 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use serde_json::Value;
-use surrealdb_types::ToSql;
 use tracing::{info, warn};
 use valymux_core::error::AppError;
-use valymux_surrealdb::{DatabaseError, RequestLogInput, ResolvedProxyRoute};
+use valymux_surrealdb::{DatabaseError, ProxySession, RequestLogInput, ResolvedProxyRoute};
 
 use crate::sys::state::AppState;
 
@@ -45,15 +44,15 @@ impl ProxyExecutor {
     ) -> Result<Response, AppError> {
         let canonical_request = CanonicalChatRequest::from_value(payload)
             .map_err(|error| AppError::BadRequest(error.to_string()))?;
-        let route = state
+        let session = state
             .database
-            .resolve_proxy_route(raw_key, &canonical_request.model)
+            .begin_proxy_session(raw_key)
             .await
-            .map_err(|e| match e {
-                DatabaseError::NotFound(msg) => AppError::NotFound(msg),
-                DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
-                other => internal_error(other),
-            })?;
+            .map_err(map_proxy_database_error)?;
+        let route = session
+            .resolve_route(&canonical_request.model)
+            .await
+            .map_err(map_proxy_database_error)?;
 
         let mut canonical_request = canonical_request;
         canonical_request.temperature = validate_model_capabilities(&canonical_request, &route)
@@ -61,8 +60,9 @@ impl ProxyExecutor {
 
         let provider_api_key = state
             .database
-            .decrypt_provider_api_key(&route.provider_credential.encrypted_api_key)
-            .map_err(internal_error)?;
+            .fetch_proxy_provider_api_key(&route.provider_credential_id)
+            .await
+            .map_err(map_proxy_database_error)?;
         let adapter = provider_adapter(&route.model.provider)?;
         adapter
             .validate_request(&canonical_request, &route)
@@ -80,11 +80,13 @@ impl ProxyExecutor {
             )
             .json(&outbound_payload);
         let request = builder.build().map_err(|e| AppError::Internal(e.into()))?;
-        let upstream = state
-            .http_client
-            .execute(request)
-            .await
-            .map_err(|error| AppError::Internal(error.into()))?;
+        let upstream = state.http_client.execute(request).await.map_err(|error| {
+            if error.is_timeout() {
+                AppError::ProviderTimeout
+            } else {
+                AppError::Internal(error.into())
+            }
+        })?;
 
         let status_code = i64::from(upstream.status().as_u16());
         let ms = started_at.elapsed().as_millis();
@@ -96,7 +98,7 @@ impl ProxyExecutor {
                     .translate_stream_response(upstream, &canonical_request, &route, &request_id)
                     .map_err(internal_error)?;
                 persist_request_log_or_warn(
-                    state.clone(),
+                    &session,
                     build_request_log(RequestLogDraft {
                         request_id: &request_id,
                         route: &route,
@@ -131,7 +133,7 @@ impl ProxyExecutor {
         let translated = adapter.translate_json_response(&body, &canonical_request, &route);
 
         persist_request_log_or_warn(
-            state.clone(),
+            &session,
             build_request_log(RequestLogDraft {
                 request_id: &request_id,
                 route: &route,
@@ -207,10 +209,8 @@ fn validate_model_capabilities(
 fn build_request_log(draft: RequestLogDraft<'_>) -> RequestLogInput {
     RequestLogInput {
         request_id: draft.request_id.to_string(),
-        user_id: draft.route.user.id.to_sql(),
-        virtual_api_key_id: Some(draft.route.key.id.to_sql()),
         model_alias: draft.route.model.alias.clone(),
-        provider: draft.route.model.provider.clone(),
+        provider: draft.route.provider.clone(),
         upstream_model: draft.route.model.upstream_model.clone(),
         status_code: draft.status_code,
         latency_ms: draft.latency_ms,
@@ -311,12 +311,60 @@ fn internal_error(error: impl std::fmt::Display) -> AppError {
     AppError::Internal(anyhow::anyhow!(error.to_string()))
 }
 
-async fn persist_request_log_or_warn(state: Arc<AppState>, log: RequestLogInput) {
+fn map_proxy_database_error(error: DatabaseError) -> AppError {
+    match error {
+        DatabaseError::NotFound(msg) => AppError::NotFound(msg),
+        DatabaseError::InvalidConfig(msg) => internal_error(msg),
+        DatabaseError::ServiceAuth(msg) => internal_error(msg),
+        DatabaseError::SecretFetch(inner) => internal_error(inner),
+        DatabaseError::Database(inner) => classify_proxy_database_message(inner.to_string()),
+        other => internal_error(other),
+    }
+}
+
+fn classify_proxy_database_message(message: String) -> AppError {
+    let lower = message.to_lowercase();
+
+    if lower.contains("invalid or expired virtual api key")
+        || lower.contains("no record was returned")
+        || lower.contains("invalidtoken")
+    {
+        return AppError::Unauthorized("Invalid or expired virtual API key".into());
+    }
+
+    if lower.contains("not allowed to use this model") {
+        return AppError::BadRequest("Virtual key is not allowed to use this model".into());
+    }
+
+    if lower.contains("virtual api key has no route configured for this model") {
+        return AppError::NotFound("No route configured for this model on this virtual key".into());
+    }
+
+    if lower.contains("requested model not found in catalog") {
+        return AppError::NotFound("Model not found".into());
+    }
+
+    if lower.contains("provider credential is disabled or not found")
+        || lower.contains("provider credential not found or disabled")
+    {
+        return AppError::NotFound("Provider credential is disabled or not found".into());
+    }
+
+    if lower.contains("provider credential does not support requested model") {
+        return AppError::BadRequest(
+            "Provider credential does not support the requested model".into(),
+        );
+    }
+
+    internal_error(message)
+}
+
+async fn persist_request_log_or_warn(session: &ProxySession, log: RequestLogInput) {
     let request_id = log.request_id.clone();
     let model_alias = log.model_alias.clone();
     let status_code = log.status_code;
 
-    if let Err(error) = state.database.log_request(log).await {
+    if let Err(error) = session.log_request(log).await {
         warn!(
             %request_id,
             %model_alias,
@@ -341,5 +389,40 @@ fn upstream_status_code_or_warn(status_code: i64, upstream: &str) -> StatusCode 
             upstream, "invalid upstream status code, falling back to 502"
         );
         StatusCode::BAD_GATEWAY
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_virtual_key_auth_failures_as_unauthorized() {
+        let error = classify_proxy_database_message("No record was returned".into());
+        assert!(matches!(error, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn classifies_scoped_model_rejections_as_bad_request() {
+        let error = classify_proxy_database_message(
+            "An error occurred: virtual API key is not allowed to use this model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn classifies_missing_route_as_not_found() {
+        let error = classify_proxy_database_message(
+            "virtual API key has no route configured for this model".into(),
+        );
+        assert!(matches!(error, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn classifies_unsupported_model_as_bad_request() {
+        let error = classify_proxy_database_message(
+            "provider credential does not support requested model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
     }
 }

@@ -10,17 +10,21 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use surrealdb_types::ToSql;
+use surrealdb_types::{RecordId, ToSql};
 use tracing::{debug, error, info, warn};
 use uuid::Uuid;
 use valymux_core::error::AppError;
 use valymux_surrealdb::{
-    CreateProviderCredentialInput, CreateVirtualApiKeyInput, DatabaseError, ModelCatalogEntry,
+    CreateProviderCredentialInput, CreateVirtualApiKeyInput, DatabaseError, ModelDefinition,
     ProviderCredential, ProviderKind, SigninInput, SignupInput, UpdateProfileInput,
     UpdateProviderCredentialInput, UpdateVirtualApiKeyInput, User, VirtualApiKey,
+    VirtualKeyRouteInput,
 };
 
 use crate::{rts::extractors::RequireAuth, svc::proxy, sys::state::AppState};
+
+const DELETE_PROVIDER_CONFLICT_RETRIES: usize = 3;
+const DELETE_PROVIDER_CONFLICT_BACKOFF_MS: u64 = 50;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
@@ -47,7 +51,7 @@ pub fn router() -> Router<Arc<AppState>> {
                 .delete(delete_virtual_key),
         )
         .route("/models", get(list_models))
-        .route("/models/{alias}", get(get_model))
+        .route("/models/{*alias}", get(get_model))
         .route("/v1/chat/completions", post(chat_completions))
 }
 
@@ -89,6 +93,7 @@ struct VirtualKeyResponse {
     name: String,
     key_prefix: String,
     allowed_models: Vec<String>,
+    model_routes: Vec<VirtualKeyRouteResponse>,
     tags: Vec<String>,
     enabled: bool,
     expires_at: Option<String>,
@@ -156,6 +161,8 @@ struct CreateVirtualKeyRequest {
     #[serde(default)]
     allowed_models: Vec<String>,
     #[serde(default)]
+    model_routes: Vec<VirtualKeyRouteRequest>,
+    #[serde(default)]
     tags: Vec<String>,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -166,9 +173,25 @@ struct UpdateVirtualKeyRequest {
     #[serde(default)]
     allowed_models: Vec<String>,
     #[serde(default)]
+    model_routes: Vec<VirtualKeyRouteRequest>,
+    #[serde(default)]
     tags: Vec<String>,
     enabled: bool,
     expires_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Deserialize)]
+struct VirtualKeyRouteRequest {
+    model_alias: String,
+    provider_credential_id: String,
+}
+
+#[derive(Serialize)]
+struct VirtualKeyRouteResponse {
+    model_alias: String,
+    provider_credential_id: String,
+    provider: String,
+    provider_label: String,
 }
 
 // ── Auth handlers ─────────────────────────────────────────────────────────────
@@ -179,6 +202,12 @@ async fn signup(
     Json(input): Json<SignupInput>,
 ) -> Result<Json<AuthResponse>, AppError> {
     debug!("signup request received");
+    if input.name.trim().is_empty() {
+        return Err(AppError::BadRequest("name must not be empty".into()));
+    }
+    if input.password.trim().is_empty() {
+        return Err(AppError::BadRequest("password must not be empty".into()));
+    }
     let session = state.database.signup_user(input).await.map_err(|error| {
         error!(error = %error, "signup failed");
         match error {
@@ -293,11 +322,35 @@ async fn create_provider(
         })?;
 
     // Spawn background model discovery — does not block the response
-    let state_clone = Arc::clone(&state);
+    // Acquire the sync lock first to prevent racing with a manual /providers/{id}/sync
     let credential_id = credential.id.to_sql();
-    tokio::spawn(async move {
-        crate::svc::discovery::run_sync(state_clone, &credential_id).await;
-    });
+    match state
+        .database
+        .start_credential_sync(token, &credential_id)
+        .await
+    {
+        Ok(true) => {
+            let state_clone = Arc::clone(&state);
+            let token_clone = token.to_string();
+            let cid = credential_id.clone();
+            tokio::spawn(async move {
+                crate::svc::discovery::run_sync(state_clone, &token_clone, &cid).await;
+            });
+        }
+        Ok(false) => {
+            tracing::warn!(
+                credential_id = %credential_id,
+                "create_provider: sync already in progress, skipping auto-sync"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                credential_id = %credential_id,
+                "create_provider: failed to acquire sync lock, skipping auto-sync"
+            );
+        }
+    }
 
     Ok(Json(map_provider(&credential)))
 }
@@ -325,7 +378,7 @@ async fn get_provider(
                 provider_id = %provider_id,
                 "get_provider failed"
             );
-            internal_error(error)
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
@@ -364,7 +417,7 @@ async fn update_provider(
                 provider_id = %provider_id,
                 "update_provider failed"
             );
-            internal_error(error)
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
@@ -382,20 +435,45 @@ async fn delete_provider(
         provider_id = %provider_id,
         "delete_provider request received"
     );
-    let provider = state
-        .database
-        .delete_provider_credential(token, &provider_id)
-        .await
-        .map_err(|error| {
-            error!(
-                error = %error,
-                token_fingerprint = %token_fingerprint(token),
-                provider_id = %provider_id,
-                "delete_provider failed"
-            );
-            internal_error(error)
-        })?
-        .ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
+    let mut provider = None;
+    for attempt in 0..=DELETE_PROVIDER_CONFLICT_RETRIES {
+        match state
+            .database
+            .delete_provider_credential(token, &provider_id)
+            .await
+        {
+            Ok(result) => {
+                provider = result;
+                break;
+            }
+            Err(error)
+                if is_database_conflict(&error) && attempt < DELETE_PROVIDER_CONFLICT_RETRIES =>
+            {
+                warn!(
+                    error = %error,
+                    token_fingerprint = %token_fingerprint(token),
+                    provider_id = %provider_id,
+                    attempt,
+                    "delete_provider hit a transient database conflict; retrying"
+                );
+                tokio::time::sleep(std::time::Duration::from_millis(
+                    DELETE_PROVIDER_CONFLICT_BACKOFF_MS * (attempt as u64 + 1),
+                ))
+                .await;
+            }
+            Err(error) => {
+                error!(
+                    error = %error,
+                    token_fingerprint = %token_fingerprint(token),
+                    provider_id = %provider_id,
+                    "delete_provider failed"
+                );
+                return Err(map_database_error(error));
+            }
+        }
+    }
+
+    let provider = provider.ok_or_else(|| AppError::NotFound("Provider not found".into()))?;
     Ok(Json(map_provider(&provider)))
 }
 
@@ -431,21 +509,27 @@ async fn sync_provider(
 
     let credential_id = credential.id.to_sql();
 
-    // Mark as syncing immediately
-    state
+    // Atomically acquire the sync lock. Returns false when a sync is already in progress,
+    // preventing duplicate concurrent syncs without a TOCTOU race.
+    let acquired = state
         .database
-        .set_credential_sync_status(&credential_id, "syncing", None)
+        .start_credential_sync(token, &credential_id)
         .await
         .map_err(|error| {
-            error!(error = %error, credential_id = %credential_id, "sync_provider: failed to set status");
+            error!(error = %error, credential_id = %credential_id, "sync_provider: failed to start sync");
             internal_error(error)
         })?;
 
-    // Spawn background task
+    if !acquired {
+        return Ok(StatusCode::ACCEPTED);
+    }
+
+    // Spawn background task - need to clone token for the async task
     let state_clone = Arc::clone(&state);
+    let token_clone = token.to_string();
     let cid = credential_id.clone();
     tokio::spawn(async move {
-        crate::svc::discovery::run_sync(state_clone, &cid).await;
+        crate::svc::discovery::run_sync(state_clone, &token_clone, &cid).await;
     });
 
     Ok(StatusCode::ACCEPTED)
@@ -465,8 +549,7 @@ async fn list_provider_models(
         "list_provider_models request received"
     );
 
-    // Verify user owns this credential (row-level security enforced by get_provider_credential)
-    state
+    let credential = state
         .database
         .get_provider_credential(token, &provider_id)
         .await
@@ -483,7 +566,7 @@ async fn list_provider_models(
 
     let models = state
         .database
-        .list_models_for_credential(&provider_id)
+        .list_models_for_credential(token, &provider_id)
         .await
         .map_err(|error| {
             error!(
@@ -495,7 +578,11 @@ async fn list_provider_models(
             internal_error(error)
         })?;
 
-    Ok(Json(models.iter().map(map_model).collect()))
+    let cred_enabled = credential.enabled;
+
+    Ok(Json(
+        models.iter().map(|m| map_model(m, cred_enabled)).collect(),
+    ))
 }
 
 // ── Virtual key handlers ──────────────────────────────────────────────────────
@@ -526,6 +613,7 @@ async fn create_virtual_key(
 ) -> Result<Json<CreateVirtualKeyResponse>, AppError> {
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), "create_virtual_key request received");
+    let routes = parse_virtual_key_routes(input.model_routes)?;
     let created = state
         .database
         .create_virtual_api_key(
@@ -533,6 +621,7 @@ async fn create_virtual_key(
             CreateVirtualApiKeyInput {
                 name: input.name,
                 allowed_models: input.allowed_models,
+                routes,
                 tags: input.tags,
                 expires_at: input.expires_at,
             },
@@ -540,10 +629,7 @@ async fn create_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), "create_virtual_key failed");
-            match error {
-                valymux_surrealdb::DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
-                other => internal_error(other),
-            }
+            map_database_error(error)
         })?;
     Ok(Json(CreateVirtualKeyResponse {
         key: map_virtual_key(&created.record),
@@ -580,6 +666,7 @@ async fn update_virtual_key(
 ) -> Result<Json<VirtualKeyResponse>, AppError> {
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key request received");
+    let routes = parse_virtual_key_routes(input.model_routes)?;
     let key = state
         .database
         .update_virtual_api_key(
@@ -588,6 +675,7 @@ async fn update_virtual_key(
             UpdateVirtualApiKeyInput {
                 name: input.name,
                 allowed_models: input.allowed_models,
+                routes,
                 tags: input.tags,
                 enabled: input.enabled,
                 expires_at: input.expires_at,
@@ -596,10 +684,7 @@ async fn update_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "update_virtual_key failed");
-            match error {
-                valymux_surrealdb::DatabaseError::InvalidConfig(msg) => AppError::BadRequest(msg),
-                other => internal_error(other),
-            }
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
@@ -619,7 +704,7 @@ async fn delete_virtual_key(
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), key_id = %key_id, "delete_virtual_key failed");
-            internal_error(error)
+            map_database_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Virtual key not found".into()))?;
     Ok(Json(map_virtual_key(&key)))
@@ -642,7 +727,7 @@ async fn list_models(
             error!(error = %error, token_fingerprint = %token_fingerprint(token), "list_models failed");
             internal_error(error)
         })?;
-    Ok(Json(models.iter().map(map_model).collect()))
+    Ok(Json(models.iter().map(|m| map_model(m, true)).collect()))
 }
 
 #[tracing::instrument(skip(state, auth))]
@@ -651,18 +736,19 @@ async fn get_model(
     auth: RequireAuth,
     Path(alias): Path<String>,
 ) -> Result<Json<ModelResponse>, AppError> {
+    let alias = alias.trim_start_matches('/').to_string();
     let token = &auth.token;
     debug!(token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model request received");
     let model = state
         .database
-        .get_model_by_alias_for_user(token, &alias)
+        .get_model_by_alias(token, &alias)
         .await
         .map_err(|error| {
             error!(error = %error, token_fingerprint = %token_fingerprint(token), alias = %alias, "get_model failed");
             internal_error(error)
         })?
         .ok_or_else(|| AppError::NotFound("Model not found".into()))?;
-    Ok(Json(map_model(&model)))
+    Ok(Json(map_model(&model, true)))
 }
 
 // ── Proxy handler ─────────────────────────────────────────────────────────────
@@ -731,6 +817,104 @@ fn internal_error(error: impl std::fmt::Display) -> AppError {
     AppError::Internal(anyhow::anyhow!(error.to_string()))
 }
 
+fn map_database_error(error: DatabaseError) -> AppError {
+    match error {
+        DatabaseError::NotFound(msg) => AppError::NotFound(msg),
+        DatabaseError::InvalidConfig(msg) => AppError::Unauthorized(msg),
+        DatabaseError::SecretFetch(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::ServiceAuth(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::SchemaBootstrap(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::Crypto(msg) => AppError::Internal(anyhow::anyhow!(msg)),
+        DatabaseError::Database(inner) => classify_database_message(inner.to_string()),
+    }
+}
+
+fn is_database_conflict(error: &DatabaseError) -> bool {
+    match error {
+        DatabaseError::Database(inner) => {
+            let message = inner.to_string().to_lowercase();
+            message.contains("transaction conflict") || message.contains("resource busy")
+        }
+        _ => false,
+    }
+}
+
+fn classify_database_message(message: String) -> AppError {
+    let lower = message.to_lowercase();
+
+    if lower.contains("invalid or expired virtual api key")
+        || lower.contains("no record was returned")
+        || lower.contains("invalidtoken")
+    {
+        return AppError::Unauthorized("Invalid or expired credentials".into());
+    }
+
+    if lower.contains("not allowed to use this model") {
+        return AppError::BadRequest("Virtual key is not allowed to use this model".into());
+    }
+
+    if lower.contains("model alias(es) not found in your catalog") {
+        return AppError::BadRequest(
+            "One or more model aliases were not found in your catalog".into(),
+        );
+    }
+
+    if lower.contains("virtual api key has no route configured for this model") {
+        return AppError::BadRequest(
+            "No route configured for this model on this virtual key".into(),
+        );
+    }
+
+    if lower.contains("provider credential does not support model alias")
+        || lower.contains("provider credential does not support requested model")
+    {
+        return AppError::BadRequest(
+            "Provider credential does not support the requested model".into(),
+        );
+    }
+
+    if lower.contains("route alias is outside virtual key scope") {
+        return AppError::BadRequest(
+            "Route model alias is outside the virtual key's allowed scope".into(),
+        );
+    }
+
+    if lower.contains("expected `record<provider_credential>`") {
+        return AppError::BadRequest("Invalid provider credential ID".into());
+    }
+
+    if lower.contains("expected `record<virtual_api_key>`") {
+        return AppError::BadRequest("Invalid virtual key ID".into());
+    }
+
+    // Catch-all for any other record type mismatch — avoids leaking schema type names.
+    if lower.contains("expected `record<") {
+        return AppError::BadRequest("Invalid resource identifier".into());
+    }
+
+    if lower.contains("requested model not found in catalog") {
+        return AppError::NotFound("Model not found".into());
+    }
+
+    if lower.contains("provider credential not found or access denied") {
+        return AppError::NotFound("Provider credential not found or access denied".into());
+    }
+
+    if lower.contains("provider credential not found or disabled") {
+        return AppError::NotFound("Provider credential not found or disabled".into());
+    }
+
+    if lower.contains("virtual api key not found or access denied") {
+        return AppError::NotFound("Virtual key not found".into());
+    }
+
+    if lower.contains("transaction conflict") || lower.contains("resource busy") {
+        return AppError::Internal(anyhow::anyhow!("Database conflict, please retry"));
+    }
+
+    internal_error(message)
+}
+
 fn token_fingerprint(token: &str) -> String {
     let hash = Sha256::digest(token.as_bytes());
     hex::encode(&hash[..8])
@@ -768,6 +952,16 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
         name: key.name.clone(),
         key_prefix: key.key_prefix.clone(),
         allowed_models: key.allowed_models.clone(),
+        model_routes: key
+            .routes
+            .iter()
+            .map(|route| VirtualKeyRouteResponse {
+                model_alias: route.model_alias.clone(),
+                provider_credential_id: route.provider_credential_id.to_sql(),
+                provider: route.provider.clone(),
+                provider_label: route.provider_label.clone(),
+            })
+            .collect(),
         tags: key.tags.clone(),
         enabled: key.enabled,
         expires_at: key.expires_at.map(|v| v.to_rfc3339()),
@@ -777,7 +971,7 @@ fn map_virtual_key(key: &VirtualApiKey) -> VirtualKeyResponse {
     }
 }
 
-fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
+fn map_model(model: &ModelDefinition, enabled: bool) -> ModelResponse {
     ModelResponse {
         id: model.id.to_sql(),
         alias: model.alias.clone(),
@@ -785,7 +979,7 @@ fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
         provider: model.provider.clone(),
         upstream_model: model.upstream_model.clone(),
         description: model.description.clone(),
-        enabled: model.enabled,
+        enabled,
         context_window_tokens: model.context_window_tokens,
         max_output_tokens: model.max_output_tokens,
         supports_streaming: model.supports_streaming,
@@ -801,5 +995,58 @@ fn map_model(model: &ModelCatalogEntry) -> ModelResponse {
         supports_vision: model.supports_vision,
         supports_json_mode: model.supports_json_mode,
         supports_parallel_tool_calls: model.supports_parallel_tool_calls,
+    }
+}
+
+fn parse_virtual_key_routes(
+    routes: Vec<VirtualKeyRouteRequest>,
+) -> Result<Vec<VirtualKeyRouteInput>, AppError> {
+    routes
+        .into_iter()
+        .map(|route| {
+            Ok(VirtualKeyRouteInput {
+                model_alias: route.model_alias,
+                provider_credential_id: RecordId::parse_simple(&route.provider_credential_id)
+                    .map_err(|_| {
+                        AppError::BadRequest(format!(
+                            "invalid provider credential id: {}",
+                            route.provider_credential_id
+                        ))
+                    })?,
+            })
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn classifies_virtual_key_scope_violation_as_bad_request() {
+        let error = classify_database_message(
+            "An error occurred: virtual API key is not allowed to use this model".into(),
+        );
+        assert!(matches!(error, AppError::BadRequest(_)));
+    }
+
+    #[test]
+    fn classifies_missing_proxy_auth_record_as_unauthorized() {
+        let error = classify_database_message("No record was returned".into());
+        assert!(matches!(error, AppError::Unauthorized(_)));
+    }
+
+    #[test]
+    fn classifies_cross_user_provider_update_as_not_found() {
+        let error = classify_database_message(
+            "An error occurred: provider credential not found or access denied".into(),
+        );
+        assert!(matches!(error, AppError::NotFound(_)));
+    }
+
+    #[test]
+    fn normalizes_wildcard_model_alias_path() {
+        let alias = "/google-genai/gemini-2.5-flash".trim_start_matches('/');
+        assert_eq!(alias, "google-genai/gemini-2.5-flash");
     }
 }

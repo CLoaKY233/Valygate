@@ -1,9 +1,10 @@
-DEFINE TABLE IF NOT EXISTS request_log SCHEMAFULL
+DEFINE TABLE OVERWRITE request_log SCHEMAFULL
     PERMISSIONS
         FOR select
-            WHERE user = $auth.id
+            WHERE user = $auth.id AND $access = "account"
         FOR create
-            NONE
+            WHERE ($access = "account" AND user = $auth.id)
+               OR ($access = "virtual_key_access" AND user = $auth.user)
         FOR update, delete
             NONE;
 
@@ -23,3 +24,8 @@ DEFINE FIELD IF NOT EXISTS usage_output_tokens ON TABLE request_log TYPE option<
 DEFINE FIELD IF NOT EXISTS created_at ON TABLE request_log TYPE datetime VALUE time::now() READONLY;
 
 DEFINE INDEX IF NOT EXISTS request_log_request_id_unique ON TABLE request_log FIELDS request_id UNIQUE;
+
+-- Performance indices: usage dashboard queries (by user, time range, and virtual key)
+DEFINE INDEX IF NOT EXISTS idx_request_log_user           ON TABLE request_log FIELDS user;
+DEFINE INDEX IF NOT EXISTS idx_request_log_created_at     ON TABLE request_log FIELDS created_at;
+DEFINE INDEX IF NOT EXISTS idx_request_log_virtual_api_key ON TABLE request_log FIELDS virtual_api_key;
