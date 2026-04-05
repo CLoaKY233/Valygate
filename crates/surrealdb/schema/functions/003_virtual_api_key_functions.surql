@@ -4,7 +4,8 @@
 DEFINE FUNCTION OVERWRITE fn::get_virtual_api_key($id: record<virtual_api_key>) {
     RETURN (
         SELECT
-            *,
+            id, user, name, key_prefix, allowed_models, tags, enabled,
+            expires_at, last_used_at, created_at, updated_at,
             (
                 SELECT
                     model_alias,
@@ -207,7 +208,8 @@ DEFINE FUNCTION OVERWRITE fn::update_virtual_api_key(
 DEFINE FUNCTION OVERWRITE fn::delete_virtual_api_key($id: record<virtual_api_key>) {
     LET $before = (
         SELECT
-            *,
+            id, user, name, key_prefix, allowed_models, tags, enabled,
+            expires_at, last_used_at, created_at, updated_at,
             (
                 SELECT
                     model_alias,
@@ -229,4 +231,25 @@ DEFINE FUNCTION OVERWRITE fn::delete_virtual_api_key($id: record<virtual_api_key
     DELETE $id WHERE user = $auth.id;
 
     RETURN $before;
+} PERMISSIONS WHERE $auth != NONE AND $access = "account";
+
+DEFINE FUNCTION OVERWRITE fn::list_virtual_api_keys() {
+    RETURN (
+        SELECT
+            id, user, name, key_prefix, allowed_models, tags, enabled,
+            expires_at, last_used_at, created_at, updated_at,
+            (
+                SELECT
+                    model_alias,
+                    out AS provider_credential_id,
+                    out.provider AS provider,
+                    out.label AS provider_label
+                FROM virtual_key_route
+                WHERE in = virtual_api_key.id
+                ORDER BY model_alias ASC
+            ) AS routes
+        FROM virtual_api_key
+        WHERE user = $auth.id
+        ORDER BY created_at ASC
+    );
 } PERMISSIONS WHERE $auth != NONE AND $access = "account";

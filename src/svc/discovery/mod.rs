@@ -65,7 +65,7 @@ pub async fn run_sync(state: Arc<AppState>, token: &str, credential_id: &str) {
     // This avoids holding the encrypted_api_key in the credential response.
     let api_key = match state
         .database
-        .fetch_proxy_provider_api_key(&credential.id)
+        .fetch_proxy_provider_api_key(&credential.id, &credential.user)
         .await
     {
         Ok(key) => key,

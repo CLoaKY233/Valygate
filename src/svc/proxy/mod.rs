@@ -60,7 +60,7 @@ impl ProxyExecutor {
 
         let provider_api_key = state
             .database
-            .fetch_proxy_provider_api_key(&route.provider_credential_id)
+            .fetch_proxy_provider_api_key(&route.provider_credential_id, &route.user_id)
             .await
             .map_err(map_proxy_database_error)?;
         let adapter = provider_adapter(&route.model.provider)?;

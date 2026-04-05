@@ -542,6 +542,7 @@ impl Database {
     pub async fn fetch_proxy_provider_api_key(
         &self,
         credential_id: &RecordId,
+        user_id: &RecordId,
     ) -> Result<String, DatabaseError> {
         if !self.config.has_service_credentials() {
             return Err(DatabaseError::InvalidConfig(
@@ -552,8 +553,9 @@ impl Database {
         let encrypted_api_key = self
             .service_client()
             .await?
-            .query("RETURN fn::backend_fetch_secret($cred_id);")
+            .query("RETURN fn::backend_fetch_secret($cred_id, $user_id);")
             .bind(("cred_id", credential_id.clone()))
+            .bind(("user_id", user_id.clone()))
             .await
             .map_err(|error| DatabaseError::SecretFetch(error.to_string()))?
             .take::<Option<String>>(0)
@@ -881,10 +883,13 @@ mod tests {
             .await
             .expect("backend service client should initialize");
 
+        let user_id = std::env::var("VALYMUX_DEBUG_USER_ID")
+            .expect("VALYMUX_DEBUG_USER_ID must be set");
         let provider_id =
             parse_thing(&provider_id).expect("VALYMUX_DEBUG_PROVIDER_ID must be a record id");
+        let user_id = parse_thing(&user_id).expect("VALYMUX_DEBUG_USER_ID must be a record id");
         let plaintext = db
-            .fetch_proxy_provider_api_key(&provider_id)
+            .fetch_proxy_provider_api_key(&provider_id, &user_id)
             .await
             .expect("provider secret fetch should succeed");
 

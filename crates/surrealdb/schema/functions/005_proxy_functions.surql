@@ -93,9 +93,10 @@ DEFINE FUNCTION OVERWRITE fn::proxy_resolve_route($model_alias: string) {
 } PERMISSIONS WHERE $access = "virtual_key_access";
 
 DEFINE FUNCTION OVERWRITE fn::backend_fetch_secret(
-    $cred_id: record<provider_credential>
+    $cred_id: record<provider_credential>,
+    $user_id: record<user>
 ) {
-    LET $cred = (SELECT encrypted_api_key FROM $cred_id WHERE enabled = true)[0];
+    LET $cred = (SELECT encrypted_api_key FROM $cred_id WHERE enabled = true AND user = $user_id)[0];
     IF $cred = NONE {
         THROW "provider credential not found or disabled";
     };

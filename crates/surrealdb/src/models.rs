@@ -95,7 +95,8 @@ pub struct VirtualApiKey {
     pub user: RecordId,
     pub name: String,
     pub key_prefix: String,
-    pub key_hash: String,
+    #[serde(default)]
+    pub key_hash: Option<String>,
     pub allowed_models: Vec<String>,
     pub tags: Vec<String>,
     pub enabled: bool,
