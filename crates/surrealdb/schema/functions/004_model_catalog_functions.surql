@@ -157,7 +157,7 @@ DEFINE FUNCTION OVERWRITE fn::set_credential_sync_status(
     UPDATE $cred_id MERGE {
         sync_status: $status,
         sync_error: $error,
-        sync_started_at: IF $status = "syncing" THEN sync_started_at ELSE NONE END
+        sync_started_at: IF $status = "syncing" THEN time::now() ELSE NONE END
     } WHERE user = $auth.id;
 
     RETURN true;
