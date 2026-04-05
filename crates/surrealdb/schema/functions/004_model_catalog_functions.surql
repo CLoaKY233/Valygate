@@ -120,7 +120,8 @@ DEFINE FUNCTION OVERWRITE fn::sync_models(
                 supports_tools: $model.supports_tools,
                 supports_vision: $model.supports_vision,
                 supports_json_mode: $model.supports_json_mode,
-                supports_parallel_tool_calls: $model.supports_parallel_tool_calls
+                supports_parallel_tool_calls: $model.supports_parallel_tool_calls,
+                updated_at: time::now()
             } RETURN AFTER)[0].id
         };
 

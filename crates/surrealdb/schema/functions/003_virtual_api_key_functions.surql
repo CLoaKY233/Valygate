@@ -63,6 +63,7 @@ DEFINE FUNCTION OVERWRITE fn::validate_virtual_key_routes($routes: array, $allow
             SELECT * FROM $route.provider_credential_id
             WHERE user = $auth.id
               AND enabled = true
+              AND sync_status != "deleting"
         )[0];
         IF $cred = NONE {
             THROW "provider credential not found or access denied";
@@ -95,6 +96,16 @@ DEFINE FUNCTION OVERWRITE fn::validate_virtual_key_routes($routes: array, $allow
                     $route.model_alias
                 );
             };
+        };
+    };
+
+    IF array::len($allowed_models) > 0 AND !("*" INSIDE $allowed_models) {
+        LET $missing_route_aliases = array::complement($allowed_models, $route_aliases);
+        IF array::len($missing_route_aliases) > 0 AND !("*" INSIDE $route_aliases) {
+            THROW string::concat(
+                "missing route alias(es) for allowed models: ",
+                string::join(", ", $missing_route_aliases)
+            );
         };
     };
 
