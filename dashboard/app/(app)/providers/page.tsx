@@ -5,6 +5,7 @@ import { createProviderAction, syncProviderAction } from "@/app/actions";
 import { CreateProviderSheet } from "@/components/create-provider-sheet";
 import { EmptyState, SectionHeader, StatusPill } from "@/components/ui";
 import { formatRelative } from "@/lib/format";
+import { stripRecordPrefix } from "@/lib/utils";
 import { listProviders } from "@/lib/api";
 
 import { Card, CardContent } from "@/components/ui/card";
@@ -130,7 +131,7 @@ export default async function ProvidersPage({
                           />
                         </div>
                         <span className="font-mono text-[0.7rem] text-muted-foreground/70">
-                          {provider.provider} &middot; {provider.id}
+                          {provider.provider} &middot; {stripRecordPrefix(provider.id)}
                         </span>
                         {provider.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1">

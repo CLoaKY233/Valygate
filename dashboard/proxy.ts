@@ -5,7 +5,7 @@ import { SESSION_COOKIE } from "./lib/session";
 
 const PUBLIC_PATHS = new Set(["/signin", "/signup"]);
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (

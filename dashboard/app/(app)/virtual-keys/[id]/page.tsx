@@ -3,6 +3,7 @@ import { VirtualKeyEditor } from "@/components/virtual-key-form";
 import { MetaList, SectionHeader, StatusPill, EmptyState } from "@/components/ui";
 import { getVirtualKey, listModels, listProviders } from "@/lib/api";
 import { formatDateTime, summarizeAllowedModels, summarizeRoutes } from "@/lib/format";
+import { stripRecordPrefix } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,7 +61,7 @@ export default async function VirtualKeyDetailPage({
                 items={[
                   {
                     label: "Record ID",
-                    value: <span className="font-mono text-[0.78rem]">{key.id}</span>,
+                    value: <span className="font-mono text-[0.78rem]">{stripRecordPrefix(key.id)}</span>,
                   },
                   {
                     label: "Key prefix",

@@ -194,3 +194,43 @@ Contributions are welcome. Please read [CONTRIBUTING.md](CONTRIBUTING.md) before
 ValyMux is released under the [GNU Affero General Public License v3.0](LICENSE).
 
 In short: you may use, modify, and distribute this software freely, but any modified version that you run as a network service must also be made available under the same license.
+
+
+--- 
+
+
+ ## Top 15 Fix First
+
+  1. DB6 fn::backend_fetch_secret can fetch any enabled credential without an ownership check in crates/surrealdb/schema/functions/005_proxy_functions.surql. This is the highest-severity data isolation break.
+  2. DB1 virtual key API functions return SELECT *, leaking key_hash from crates/surrealdb/schema/functions/003_virtual_api_key_functions.surql. That should never leave the backend.
+  3. R5 / DB2 Rust calls missing fn::list_virtual_api_keys() from crates/surrealdb/src/lib.rs, so virtual key listing is a runtime failure.
+  4. R4 / DB3 only Google is represented end-to-end: proxy adapter dispatch only supports Google in src/svc/proxy/mod.rs, and ProviderKind only has GoogleGenAi in crates/surrealdb/src/models.rs.
+  5. D1 dashboard auth middleware is dead because Next will not pick up dashboard/proxy.ts as middleware.
+  6. R2 there is no rate limiting on auth or proxy routes in src/rts/v1.rs. This is direct abuse and cost exposure.
+  7. R15 startup only warns when VALYMUX_DB_SERVICE_KEY is missing in src/sys/init.rs, leaving proxy secret fetch to fail later at runtime.
+  8. DB4 virtual keys are hashed with unsalted SHA-256 in crates/surrealdb/src/crypto.rs and crates/surrealdb/schema/auth/003_virtual_key_access.surql. That is weak against offline attacks.
+  9. DB5 AES-GCM encryption has no AAD in crates/surrealdb/src/crypto.rs, so ciphertext is not bound to record identity.
+  10. R6 / R24 streaming has no stream-specific idle limit and the Google SSE parser buffer is unbounded in src/svc/proxy/mod.rs and src/svc/proxy/google_genai.rs.
+  11. D3 provider creation in the dashboard hardcodes google-genai in dashboard/app/actions.ts, so multi-provider UI is misleading and broken.
+  12. D8 / R14 raw backend/provider errors are surfaced too directly through dashboard/lib/api.ts and sync_error is returned from src/rts/v1.rs.
+  13. R7 fragile string matching drives error classification in src/rts/v1.rs and src/svc/proxy/mod.rs; this will break silently on message changes.
+  14. D5 profile update ignores failed responses in dashboard/app/(app)/profile/page.tsx, causing silent data loss/confusion.
+  15. D11 / R1 HTTP security posture is incomplete: empty dashboard/next.config.ts and no explicit CORS policy in src/main.rs.
+
+  ## Suggested Fix Batches
+
+  Batch 1: DB6, DB1, R5/DB2, R15.
+  Batch 2: R4/DB3, D1, D3.
+  Batch 3: R2, DB4, DB5, R6/R24.
+  Batch 4: D8/R14, R7, D5, D11/R1.
+
+  ## Test Cases To Require After Fixes
+
+  - Virtual key list endpoint works and never returns key_hash.
+  - Backend-service secret fetch is rejected for another user’s credential.
+  - Non-Google providers can be created and routed successfully.
+  - Unauthenticated dashboard route access is redirected by real Next middleware.
+  - Missing VALYMUX_DB_SERVICE_KEY fails startup.
+  - Streaming proxy aborts on idle/oversized streams and does not grow memory unbounded.
+  - Dashboard provider form persists the selected provider instead of always Google.
+  - UI and API return sanitized, stable error codes/messages.

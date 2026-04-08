@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 
 import { getCurrentUser } from "@/lib/api";
+import { stripRecordPrefix } from "@/lib/utils";
 import { SectionHeader, StatusPill } from "@/components/ui";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -60,7 +61,7 @@ export default async function ProfilePage() {
                 <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">
                   User ID
                 </p>
-                <p className="mt-1 font-mono text-sm font-medium">{user.id}</p>
+                <p className="mt-1 font-mono text-sm font-medium">{stripRecordPrefix(user.id)}</p>
               </div>
               <div className="rounded-md bg-muted/30 px-4 py-3">
                 <p className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-muted-foreground/70">

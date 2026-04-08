@@ -8,6 +8,7 @@ use axum::{
     response::Response,
     routing::{get, post},
 };
+use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use surrealdb_types::{RecordId, ToSql};
@@ -27,9 +28,38 @@ const DELETE_PROVIDER_CONFLICT_RETRIES: usize = 3;
 const DELETE_PROVIDER_CONFLICT_BACKOFF_MS: u64 = 50;
 
 pub fn router() -> Router<Arc<AppState>> {
-    Router::new()
+    // Auth routes: 5 req burst, refill 1 token every 10 s (max ~6 req/min per IP).
+    // Protects against credential-stuffing and account-enumeration abuse.
+    let auth_governor = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(10)
+            .burst_size(5)
+            .finish()
+            .expect("valid auth rate-limit config"),
+    );
+
+    // Proxy route: 20 req burst, refill 1 token per second (max ~60 req/min per IP).
+    // Guards upstream API cost while allowing normal interactive use.
+    let proxy_governor = Arc::new(
+        GovernorConfigBuilder::default()
+            .per_second(1)
+            .burst_size(20)
+            .finish()
+            .expect("valid proxy rate-limit config"),
+    );
+
+    let auth_routes = Router::new()
         .route("/auth/signup", post(signup))
         .route("/auth/signin", post(signin))
+        .layer(GovernorLayer::new(auth_governor));
+
+    let proxy_routes = Router::new()
+        .route("/v1/chat/completions", post(chat_completions))
+        .layer(GovernorLayer::new(proxy_governor));
+
+    Router::new()
+        .merge(auth_routes)
+        .merge(proxy_routes)
         .route("/me", get(me).patch(update_me))
         .route("/providers", get(list_providers).post(create_provider))
         .route(
@@ -52,7 +82,6 @@ pub fn router() -> Router<Arc<AppState>> {
         )
         .route("/models", get(list_models))
         .route("/models/{*alias}", get(get_model))
-        .route("/v1/chat/completions", post(chat_completions))
 }
 
 // ── Response types ────────────────────────────────────────────────────────────

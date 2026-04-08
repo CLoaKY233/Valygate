@@ -58,6 +58,15 @@ async function request<T>(path: string, init: RequestInit = {}, token?: string |
     return null as T;
   }
 
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("application/json")) {
+    throw new ApiError(
+      response.status,
+      `API returned non-JSON response (${contentType || "no content-type"}). ` +
+        `Check that VALYMUX_API_BASE_URL points to the Rust API, not the Next.js server.`,
+    );
+  }
+
   return (await response.json()) as T;
 }
 

@@ -38,8 +38,8 @@ function buildInitialRoutes(key?: VirtualKey): RouteRow[] {
   }
 
   return key.model_routes.map((route) => ({
-    modelAlias: route.model_alias,
-    providerCredentialId: route.provider_credential_id,
+    modelAlias: route.model_alias ?? "",
+    providerCredentialId: route.provider_credential_id ?? "",
   }));
 }
 
@@ -208,7 +208,7 @@ export function VirtualKeyEditor({
                         </Label>
                         {modelOptions.length > 0 ? (
                           <Select
-                            value={route.modelAlias || undefined}
+                            value={route.modelAlias ?? ""}
                             onValueChange={(val) => updateRoute(index, "modelAlias", val as string)}
                           >
                             <SelectTrigger className="h-8 w-full text-sm">
@@ -240,13 +240,18 @@ export function VirtualKeyEditor({
                           Provider credential
                         </Label>
                         <Select
-                          value={route.providerCredentialId || undefined}
+                          value={route.providerCredentialId ?? ""}
                           onValueChange={(val) =>
                             updateRoute(index, "providerCredentialId", val as string)
                           }
                         >
                           <SelectTrigger className="h-8 w-full text-sm">
-                            <SelectValue placeholder="Select credential" />
+                            <SelectValue placeholder="Select credential">
+                              {(val: string | null) => {
+                                const p = providers.find((p) => p.id === val);
+                                return p ? `${p.label} · ${p.provider}` : null;
+                              }}
+                            </SelectValue>
                           </SelectTrigger>
                           <SelectContent>
                             {providers.map((provider) => (

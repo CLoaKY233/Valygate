@@ -1,5 +1,6 @@
 use anyhow::Result;
 use axum::{extract::DefaultBodyLimit, routing::get};
+use std::net::SocketAddr;
 use tower_http::trace::TraceLayer;
 use tracing::info;
 use valymux::{
@@ -30,7 +31,7 @@ async fn main() -> Result<()> {
         .layer(TraceLayer::new_for_http())
         .with_state(state);
 
-    axum::serve(listener, app)
+    axum::serve(listener, app.into_make_service_with_connect_info::<SocketAddr>())
         .with_graceful_shutdown(shutdown_signal())
         .await?;
 

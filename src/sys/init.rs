@@ -3,7 +3,7 @@ use reqwest::Client;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
-use tracing::{info, warn};
+use tracing::info;
 use valymux_surrealdb::Database;
 
 use super::{config::AppConfig, state::AppState};
@@ -57,9 +57,7 @@ pub async fn initialize() -> Result<(Arc<AppState>, TcpListener)> {
             .await
             .context("Failed to authenticate backend service database client")?;
     } else {
-        warn!(
-            "VALYMUX_DB_SERVICE_KEY is not set; control-plane routes will work, but proxy secret fetching will fail until the backend-service bearer grant is configured"
-        );
+        bail!("VALYMUX_DB_SERVICE_KEY is not set; refusing to start — proxy secret fetching requires the backend-service bearer grant");
     }
     info!("Database configuration validated");
 

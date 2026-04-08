@@ -16,6 +16,7 @@ import {
 import { EmptyState, MetaList, SectionHeader, StatusPill } from "@/components/ui";
 import { getProvider, listProviderModels } from "@/lib/api";
 import { formatDateTime, formatRelative } from "@/lib/format";
+import { stripRecordPrefix } from "@/lib/utils";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -112,7 +113,7 @@ export default async function ProviderDetailPage({
                     label: "Record ID",
                     value: (
                       <span className="font-mono text-[0.78rem]">
-                        {provider.id}
+                        {stripRecordPrefix(provider.id)}
                       </span>
                     ),
                   },
