@@ -29,6 +29,7 @@ sha2.workspace = true
 hex.workspace = true
 dashmap = "6.1.0"
 async-trait = "0.1.89"
+tower_governor = { workspace = true }
 
 
 [workspace]
@@ -68,6 +69,7 @@ async-stream = "0.3.6"
 bytes = "1.11.1"
 futures-util = "0.3.32"
 pbkdf2 = "0.12.2"
+tower_governor = "0.8"
 
 
 [profile.release]

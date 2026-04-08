@@ -6,3 +6,7 @@
 documents
 surrealdbdocs
 .codex
+tests
+scripts
+auditreport.md
+TEST_AUTO_RESULTS.md
